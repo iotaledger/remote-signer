@@ -1,0 +1,21 @@
+syntax = "proto3";
+package dispatcher;
+
+service SignatureDispatcher {
+
+  rpc SignMilestone (SignMilestoneRequest) returns (SignMilestoneResponse);
+
+}
+
+message SignMilestoneRequest {
+
+  repeated string pubKeys = 1;
+  bytes msEssence = 2;
+
+}
+
+message SignMilestoneResponse {
+
+  repeated string signatures = 1;
+
+}

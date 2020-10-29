@@ -1,0 +1,30 @@
+[package]
+name = "remote-signer"
+version = "0.1.0"
+authors = ["Andrea Villa <andreakarimodm@gmail.com>"]
+edition = "2018"
+publish = false
+license = "MIT"
+
+[[bin]]
+name = "dispatcher-server"
+path = "src/dispatcher/server.rs"
+
+[[bin]]
+name = "dispatcher-client"
+path = "src/dispatcher/client.rs"
+
+[[bin]]
+name = "signer-server"
+path = "src/signer/server.rs"
+
+[dependencies]
+config = { version = "0.10.1", features = ["json"] }
+tonic = "0.3"
+prost = "0.6"
+tokio = { version = "0.2.22", features = ["macros"] }
+serde = { version = "1.0", features = ["derive"] }
+ed25519-zebra = "2"
+
+[build-dependencies]
+tonic-build = "0.3"
