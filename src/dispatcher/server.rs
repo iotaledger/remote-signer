@@ -9,7 +9,7 @@ pub mod dispatcher {
     tonic::include_proto!("dispatcher");
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Dispatcher {
     signers: Vec<config::KeySigner>
 }
@@ -23,7 +23,7 @@ impl SignatureDispatcher for Dispatcher {
         println!("Got a request: {:?}", request);
         println!("Signers: {:?}", self.signers);
 
-        let reply = dispatcher::SignMilestoneResponse {
+        let reply = SignMilestoneResponse {
             signatures: vec![String::from("ciao"), String::from("culo")]
         };
 
@@ -33,7 +33,7 @@ impl SignatureDispatcher for Dispatcher {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = config::parse("dispatcher_config.json");
+    let config = config::parse_dispatcher("dispatcher_config.json")?;
     let addr = "[::1]:50051".parse()?;
     let dispatcher = Dispatcher { signers: config.signers };
 
