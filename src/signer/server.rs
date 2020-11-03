@@ -1,16 +1,26 @@
-use tonic::{transport::Server, Request, Response, Status};
+use std::convert::TryFrom;
+
+use tonic::{Request, Response, Status};
+use tonic::transport::{Server, ServerTlsConfig, Certificate, Identity};
 
 use signer::signer_server::{Signer, SignerServer};
 use signer::{SignWithKeyRequest, SignWithKeyResponse};
 
 use remote_signer::common::config;
 
+use clap::{App, Arg};
+
+use ed25519_zebra::SigningKey;
+
 pub mod signer {
     tonic::include_proto!("signer");
 }
 
-#[derive(Debug, Default)]
-pub struct Ed25519Signer { }
+#[derive(Debug)]
+pub struct Ed25519Signer {
+    config: config::SignerConfig,
+    keypairs: Vec<config::BytesPubPriv>
+}
 
 #[tonic::async_trait]
 impl Signer for Ed25519Signer {
@@ -18,10 +28,19 @@ impl Signer for Ed25519Signer {
         &self,
         request: Request<SignWithKeyRequest>,
     ) -> Result<Response<SignWithKeyResponse>, Status> {
-        println!("Got a request: {:?}", request);
+        let r = request.get_ref();
+        let matched_key = match self.keypairs.iter().find(
+            |pair| pair.pubkey == r.pub_key
+        ) {
+            Some(key) => key,
+            None => return Err(Status::invalid_argument("This signer does not sign with the provided key."))
+        };
+
+        let sk = SigningKey::try_from(matched_key.privkey.as_ref()).unwrap();
+        let signature = sk.sign(r.ms_essence.as_ref());
 
         let reply = SignWithKeyResponse {
-            signature: String::from("ciao")
+            signature: <[u8; 64]>::from(signature).to_vec()
         };
 
         Ok(Response::new(reply))
@@ -30,13 +49,33 @@ impl Signer for Ed25519Signer {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = config::parse_signer("signer_config.json")?;
-    let addr = "[::1]:50051".parse()?;
-    let signer = Ed25519Signer::default();
+    let config_arg = App::new("Remote Signer")
+        .arg(Arg::with_name("config")
+             .short("c")
+             .long("config")
+             .takes_value(true)
+             .value_name("FILE")
+             .default_value("signer_config.json")
+             .help("Dispatcher .json configuration file")
+        ).get_matches();
+
+    let (config, keypairs) = config::parse_signer(config_arg.value_of("config").unwrap())?;
+    let addr = config.bind_addr.parse()?;
+    let server_cert = tokio::fs::read(&config.tls.cert).await?;
+    let server_key = tokio::fs::read(&config.tls.key).await?;
+    let server_identity = Identity::from_pem(server_cert, server_key);
+    let client_ca_cert = tokio::fs::read(&config.tls.ca).await?;
+    let client_ca_cert = Certificate::from_pem(client_ca_cert);
+    let tls = ServerTlsConfig::new()
+        .identity(server_identity)
+        .client_ca_root(client_ca_cert);
+
+    let signer = Ed25519Signer { config, keypairs };
 
     println!("Serving on {}...", addr);
 
     Server::builder()
+        .tls_config(tls)?
         .add_service(SignerServer::new(signer))
         .serve(addr)
         .await?;
