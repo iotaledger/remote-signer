@@ -125,7 +125,6 @@ pub fn parse_dispatcher(path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySig
             endpoint: signer.endpoint.to_owned()
         }
     ).collect();
-    println!("Parsed Config:\n{:?}\n", conf);
     Ok((conf, keysigners))
 }
 
@@ -147,6 +146,5 @@ pub fn parse_signer(path: &str) -> Result<(SignerConfig, Vec<BytesPubPriv>), Box
             privkey: keypair.privkey.to_owned().try_into().unwrap()
         }
     ).collect();
-    println!("Parsed Config:\n{:?}", conf);
     Ok((conf, keypairs))
 }

@@ -14,6 +14,9 @@ use futures::future;
 use itertools::Itertools;
 use std::error::Error;
 
+use simple_logger::SimpleLogger;
+#[macro_use] extern crate log;
+
 pub mod dispatcher {
     tonic::include_proto!("dispatcher");
 }
@@ -48,6 +51,8 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         request: Request<SignMilestoneRequest>,
     ) -> Result<Response<SignMilestoneResponse>, Status> {
 
+        debug!("Got Request: {:?}", request);
+
         let r = request.get_ref();
         // Check that the pubkeys do not repeat
         let pub_keys_unique = r.pub_keys.iter().unique();
@@ -61,28 +66,44 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         // Clone the iterator to avoid consuming it for the next map
         if matched_signers.clone().any(|signer| signer.is_none()) {
+            warn!("Requested public key is not known!");
+            warn!("Request: {:?}", request);
+            warn!("Available Signers: {:?}", self.keysigners);
             return Err(Status::invalid_argument("I don't know the signer for one or more of the provided public keys."))
         }
 
         let confirmed_signers = matched_signers.map(|signer| signer.unwrap());
 
+        info!("Got Request that matches signers: {:?}", confirmed_signers);
+
         let signatures = future::join_all(
             // map of Futures<Output=Result<SignWithKeyResponse, Error>>
-            confirmed_signers.map(|signer|
+            confirmed_signers.clone().map(|signer|
                 async move {
                     let channel = match self.connect_signer_tls(signer.endpoint.clone()).await {
                         Ok(channel) => channel,
-                        Err(e) => return Err(Status::internal(format!("Could not connect to the signer `{}`, {}", signer.endpoint, e)))
+                        Err(e) => {
+                            error!("Error connecting to Signer!");
+                            error!("Signer: {:?}", signer);
+                            error!("Error: {:?}", e);
+                            return Err(Status::internal(format!("Could not connect to the Signer `{}`, {}", signer.endpoint, e)))
+                        }
                     };
 
                     let mut client = SignerClient::new(channel);
 
-                    let request = tonic::Request::new(SignWithKeyRequest {
+                    let req = tonic::Request::new(SignWithKeyRequest {
                         pub_key: signer.pubkey.to_owned(),
                         ms_essence: r.ms_essence.to_owned()
                     });
 
-                    client.sign_with_key(request).await
+                    debug!("Sending request to Signer `{}`: {:?}", signer.endpoint, req);
+                    let res = client.sign_with_key(req).await;
+                    if res.is_err() {
+                        error!("Error getting response from Signer `{}`: {:?}", signer.endpoint, res);
+                    }
+                    debug!("Got Response from Signer `{}`: {:?}", signer.endpoint, res);
+                    res
                 }
             )
         );
@@ -96,12 +117,18 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
             signatures: signatures.iter().map(|signature| signature.as_ref().unwrap().get_ref().to_owned().signature).collect()
         };
 
+        info!("Successfully signed.");
+        info!("MS Essence: {:?}", r.ms_essence);
+        info!("Used Signers: {:?}", confirmed_signers);
+        info!("Signatures: {:?}", reply.signatures);
+
         Ok(Response::new(reply))
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(Arg::with_name("config")
              .short("c")
@@ -112,7 +139,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              .help("Dispatcher .json configuration file")
         ).get_matches();
 
-    let (config, keysigners) = config::parse_dispatcher(config_arg.value_of("config").unwrap())?;
+    let conf_path = config_arg.value_of("config").unwrap();
+    info!("Parsing configuration file `{}`.", conf_path);
+    let (config, keysigners) = config::parse_dispatcher(conf_path)?;
+    debug!("Parsed configuration file: {:?}", config);
     let addr = config.bind_addr.parse()?;
     let server_root_ca_cert = tokio::fs::read(&config.tlsauth.ca).await?;
     let server_root_ca_cert = Certificate::from_pem(server_root_ca_cert);
@@ -123,8 +153,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ca_certificate(server_root_ca_cert)
         .identity(client_identity);
     let dispatcher = Ed25519SignatureDispatcher { config, tls_auth, keysigners };
+    debug!("Initialized Dispatcher server: {:?}", dispatcher);
 
-    println!("Serving on {}...", addr);
+    info!("Serving on {}...", addr);
 
     Server::builder()
         .add_service(SignatureDispatcherServer::new(dispatcher))
