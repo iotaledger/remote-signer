@@ -13,6 +13,9 @@ use clap::{App, Arg};
 use futures::future;
 use itertools::Itertools;
 use std::error::Error;
+use std::convert::TryFrom;
+
+use ed25519_zebra::{Signature, VerificationKey};
 
 use simple_logger::SimpleLogger;
 #[macro_use] extern crate log;
@@ -103,6 +106,24 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
                         error!("Error getting response from Signer `{}`: {:?}", signer.endpoint, res);
                     }
                     debug!("Got Response from Signer `{}`: {:?}", signer.endpoint, res);
+
+                    let verification_key = VerificationKey::try_from(signer.pubkey.as_slice()).unwrap();
+                    let signature = match Signature::try_from(res.as_ref().unwrap().get_ref().signature.as_slice()) {
+                        Ok(signature) => signature,
+                        Err(e) => {
+                            error!("Invalid signature format returned by Signer!");
+                            error!("Signer: {:?}", signer);
+                            error!("Error: {:?}", e);
+                            return Err(Status::internal(format!("Invalid signature format returned by signer `{}`, {}", signer.endpoint, e)))
+                        }
+                    };
+                    if verification_key.verify(&signature, r.ms_essence.as_slice()).is_err() {
+                        error!("Invalid signature returned by Signer!");
+                        error!("Signer: {:?}", signer);
+                        error!("Signature: {:?}", signature);
+                        return Err(Status::internal(format!("Invalid signature returned by signer `{}`", signer.endpoint)))
+                    }
+
                     res
                 }
             )
@@ -119,7 +140,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         info!("Successfully signed.");
         info!("MS Essence: {:?}", r.ms_essence);
-        info!("Used Signers: {:?}", confirmed_signers);
+        info!("Used Signers: {:?}", confirmed_signers.collect::<Vec<_>>());
         info!("Signatures: {:?}", reply.signatures);
 
         Ok(Response::new(reply))
