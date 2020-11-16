@@ -147,7 +147,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")

@@ -7,7 +7,7 @@ pub mod dispatcher {
     tonic::include_proto!("dispatcher");
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = SignatureDispatcherClient::connect("http://dispatcher.remote-signer:50051").await?;
 
