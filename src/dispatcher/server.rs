@@ -63,7 +63,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let matched_signers = pub_keys_unique.map(|pubkey| {
             self.keysigners.iter().find(
-                |keysigner| keysigner.pubkey == pubkey.to_owned()
+                |keysigner| keysigner.pubkey == *pubkey
             )
         });
 

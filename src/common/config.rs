@@ -1,4 +1,3 @@
-use config;
 use serde::Deserialize;
 use hex::FromHex;
 use std::convert::{TryFrom, TryInto};
@@ -77,9 +76,7 @@ fn validate_ed25519_pubkey(pubkey: &HexEd25519Key) -> bool {
 }
 
 fn validate_ed25519_pubkeys(pubkeys: Vec<&HexEd25519Key>) -> bool {
-    pubkeys.iter().fold(true,
-        |acc, pubkey| acc && validate_ed25519_pubkey(pubkey)
-    )
+    pubkeys.iter().all(|pubkey| validate_ed25519_pubkey(pubkey))
 }
 
 fn validate_ed25519_privkey(keypair: &HexPubPriv) -> bool {
@@ -94,20 +91,14 @@ fn validate_ed25519_privkey(keypair: &HexPubPriv) -> bool {
                     _ => return false
                 };
                 let pubkey_computed = VerificationKeyBytes::from(&privkey_provided);
-                if pubkey_provided_bytes == pubkey_computed.as_ref() {
-                    true
-                } else {
-                    false
-                }
+                pubkey_provided_bytes == pubkey_computed.as_ref()
             },
             _ => false
         }
 }
 
 fn validate_ed25519_privkeys(keypairs: &Vec<HexPubPriv>) -> bool {
-    keypairs.iter().fold(true,
-        |acc, keypair| acc && validate_ed25519_privkey(keypair)
-    )
+    keypairs.iter().all(|keypair| validate_ed25519_privkey(keypair))
 }
 
 pub fn parse_dispatcher(path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>), Box<dyn std::error::Error>> {
