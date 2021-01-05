@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Serving on {}...", addr);
 
     Server::builder()
-        .tls_config(tls)?
+        // .tls_config(tls)?
         .add_service(SignerServer::new(signer))
         .serve(addr)
         .await?;

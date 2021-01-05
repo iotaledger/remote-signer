@@ -7,7 +7,7 @@ use ed25519_zebra::{VerificationKey, VerificationKeyBytes, SigningKey};
 pub struct DispatcherConfig {
     pub bind_addr: String,
     pub signers: Vec<HexKeySigner>,
-    pub tlsauth: ClientTlsAuth
+    pub tlsauth: ClientTlsAuth,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -52,7 +52,7 @@ impl TryInto<Vec<u8>> for HexEd25519Key {
         Vec::from_hex(self.0)
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BytesKeySigner {
     pub pubkey: Vec<u8>,
     pub endpoint: String

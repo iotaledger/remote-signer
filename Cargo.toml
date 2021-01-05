@@ -22,7 +22,7 @@ path = "src/signer/server.rs"
 config = { version = "0.10", features = ["json"] }
 tonic = { version = "0.3", features = ["transport", "tls"] }
 prost = "0.6"
-tokio = { version = "0.2", features = ["macros", "fs"] }
+tokio = { version = "0.2", features = ["macros", "fs", "signal"] }
 serde = { version = "1.0", features = ["derive"] }
 hex = "0.4"
 itertools = "0.9"
