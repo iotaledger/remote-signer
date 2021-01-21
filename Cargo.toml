@@ -31,6 +31,7 @@ clap = "2.33"
 simple_logger = "1.11"
 log = "0.4"
 ed25519-zebra = "2"
+async-std = { version = "1.8.0", features = ["std"] }
 
 [build-dependencies]
 tonic-build = "0.3"

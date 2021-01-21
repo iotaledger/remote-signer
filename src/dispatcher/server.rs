@@ -1,14 +1,11 @@
 #[macro_use] extern crate log;
 
-use std::borrow::{BorrowMut, Borrow};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::ops::{DerefMut, Deref};
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use async_std::sync::{Arc, Mutex};
 
-use clap::{App, Arg, ArgMatches};
+use clap::{App, Arg};
 use ed25519_zebra::{Signature, VerificationKey};
 use futures::future;
 use futures::join;
@@ -17,7 +14,7 @@ use log::LevelFilter;
 use simple_logger::SimpleLogger;
 use tokio::signal::unix::{signal, SignalKind};
 use tonic::{Request, Response, Status, transport::Server};
-use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
+use tonic::transport::Channel;
 
 use dispatcher::{SignMilestoneRequest, SignMilestoneResponse};
 use dispatcher::signature_dispatcher_server::{SignatureDispatcher, SignatureDispatcherServer};
@@ -36,9 +33,7 @@ pub mod signer {
 
 #[derive(Debug)]
 pub struct Ed25519SignatureDispatcher {
-    config: Arc<Mutex<DispatcherConfig>>,
-    keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>,
-    config_path: Arc<String>
+    keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>
 }
 
 impl Ed25519SignatureDispatcher {
@@ -50,22 +45,6 @@ impl Ed25519SignatureDispatcher {
                 .await?
         )
     }
-
-    // fn set_config(&mut self, config: DispatcherConfig) {
-    //     self.config = config;
-    // }
-    //
-    // fn set_tls_auth(&mut self, tls_auth: ClientTlsConfig) {
-    //     self.tls_auth = tls_auth;
-    // }
-    //
-    // fn set_key_signers(&mut self, key_signers: Vec<config::BytesKeySigner>) {
-    //     self.keysigners = key_signers;
-    // }
-    //
-    // fn set_config_path(&mut self, config_path: String) {
-    //     self.config_path = config_path;
-    // }
 }
 
 #[tonic::async_trait]
@@ -84,7 +63,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let mut matched_signers: Vec<Option<BytesKeySigner>> = Vec::new();
         {
-            let mut keysigners_guard = self.keysigners.lock().unwrap();
+            let keysigners_guard = self.keysigners.lock().await;
             for signer in keysigners_guard.iter() {
                 if pub_keys_unique.any(|key| signer.pubkey.eq(key)) {
                     matched_signers.push(Some(signer.to_owned()));
@@ -109,7 +88,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
             // map of Futures<Output=Result<SignWithKeyResponse, Error>>
             confirmed_signers.clone().map(|signer|
                 async move {
-                    let channel = match self.connect_signer_tls(signer.endpoint.clone()).await {
+                     let channel = match self.connect_signer(signer.endpoint.clone()).await {
                         Ok(channel) => channel,
                         Err(e) => {
                             error!("Error connecting to Signer!");
@@ -189,12 +168,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Start");
 
     let conf_path = config_arg.value_of("config").unwrap();
-    let (addr, mut dispatcher) = create_dispatcher(conf_path).await?;
+    let (addr, dispatcher) = create_dispatcher(conf_path).await?;
     debug!("Initialized Dispatcher server: {:?}", dispatcher);
 
-    let conf_path = Arc::clone(&dispatcher.config_path);
-    let mut conf = Arc::clone(&dispatcher.config);
-    let mut key_signers = Arc::clone(&dispatcher.keysigners);
+    let key_signers = Arc::clone(&dispatcher.keysigners);
 
 
     let mut server = Server::builder();
@@ -202,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .serve(addr);
     info!("Serving on {}...", addr);
 
-    let signal = reload_configs_upon_signal(&conf_path, conf, key_signers);
+    let signal = reload_configs_upon_signal(&conf_path, key_signers);
 
     info!("listening for sighup");
 
@@ -211,12 +188,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn create_dispatcher(conf_path: &str) -> Result<(SocketAddr, Ed25519SignatureDispatcher), Box<dyn std::error::Error>> {
-    let (config, keysigners, addr) = parse_confs(conf_path).await?;
-    let config_path = conf_path.to_string();
+    let (_, keysigners, addr) = parse_confs(conf_path).await?;
     let dispatcher = Ed25519SignatureDispatcher {
-        config: Arc::new(Mutex::new(config)),
-        keysigners: Arc::new(Mutex::new(keysigners)),
-        config_path: Arc::new(config_path)
+        keysigners: Arc::new(Mutex::new(keysigners))
     };
     Ok((addr, dispatcher))
 }
@@ -224,24 +198,22 @@ async fn create_dispatcher(conf_path: &str) -> Result<(SocketAddr, Ed25519Signat
 async fn parse_confs(conf_path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr), Box<dyn std::error::Error>> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
-    debug!("Parsed configuration file: {:?}", config);
     let addr = config.bind_addr.parse()?;
     Ok((config, keysigners, addr))
 }
 
-async fn reload_configs_upon_signal(conf_path : &str, mut config_a: Arc<Mutex<DispatcherConfig>>, mut key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> Result<(), Box<dyn std::error::Error>> {
+async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = signal(SignalKind::hangup())?;
 
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
         info!("got signal HUP");
-        let (config, keysigners, _) = parse_confs(conf_path).await?;
-        // config_a.clone_from(&Arc::new(config));
-        let mut signers = key_signers_a.lock().unwrap();
+        let (_, keysigners, _) = parse_confs(conf_path).await?;
+        let mut signers = key_signers_a.lock().await;
         signers.clear();
-        for bk in keysigners  {
-            signers.push(bk)
+        for signer in keysigners  {
+            signers.push(signer)
         }
     }
 }
