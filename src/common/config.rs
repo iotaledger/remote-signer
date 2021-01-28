@@ -7,28 +7,12 @@ use ed25519_zebra::{VerificationKey, VerificationKeyBytes, SigningKey};
 pub struct DispatcherConfig {
     pub bind_addr: String,
     pub signers: Vec<HexKeySigner>,
-    pub tlsauth: ClientTlsAuth,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-pub struct ClientTlsAuth {
-    pub ca: String,
-    pub client_cert: String,
-    pub client_key: String
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct SignerConfig {
     pub bind_addr: String,
     pub keys: Vec<HexPubPriv>,
-    pub tls: ServerTlsAuth
-}
-
-#[derive(Deserialize, Clone, Debug)]
-pub struct ServerTlsAuth {
-    pub ca: String,
-    pub cert: String,
-    pub key: String
 }
 
 #[derive(Deserialize, Clone, Debug)]

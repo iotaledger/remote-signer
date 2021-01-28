@@ -80,14 +80,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (config, keypairs) = config::parse_signer(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);
     let addr = config.bind_addr.parse()?;
-    let server_cert = tokio::fs::read(&config.tls.cert).await?;
-    let server_key = tokio::fs::read(&config.tls.key).await?;
-    let server_identity = Identity::from_pem(server_cert, server_key);
-    let client_ca_cert = tokio::fs::read(&config.tls.ca).await?;
-    let client_ca_cert = Certificate::from_pem(client_ca_cert);
-    let tls = ServerTlsConfig::new()
-        .identity(server_identity)
-        .client_ca_root(client_ca_cert);
 
     let signer = Ed25519Signer { config, keypairs };
     debug!("Initialized Signer server: {:?}", signer);
@@ -95,7 +87,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Serving on {}...", addr);
 
     Server::builder()
-        // .tls_config(tls)?
         .add_service(SignerServer::new(signer))
         .serve(addr)
         .await?;

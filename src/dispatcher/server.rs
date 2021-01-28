@@ -37,17 +37,15 @@ pub mod signer {
 #[derive(Debug)]
 pub struct Ed25519SignatureDispatcher {
     config: Arc<Mutex<DispatcherConfig>>,
-    tls_auth: Arc<Mutex<ClientTlsConfig>>,
     keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>,
     config_path: Arc<String>
 }
 
 impl Ed25519SignatureDispatcher {
-    async fn connect_signer_tls(&self, endpoint: String) -> Result<Channel, Box<dyn Error>>
+    async fn connect_signer(&self, endpoint: String) -> Result<Channel, Box<dyn Error>>
     {
         Ok(
             Channel::from_shared(endpoint)?
-                // .tls_config(self.tls_auth.clone())?
                 .connect()
                 .await?
         )
@@ -197,7 +195,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conf_path = Arc::clone(&dispatcher.config_path);
     let mut conf = Arc::clone(&dispatcher.config);
     let mut key_signers = Arc::clone(&dispatcher.keysigners);
-    let mut tls_auth = Arc::clone(&dispatcher.tls_auth);
 
 
     let mut server = Server::builder();
@@ -205,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .serve(addr);
     info!("Serving on {}...", addr);
 
-    let signal = reload_configs_upon_signal(&conf_path, conf, key_signers, tls_auth);
+    let signal = reload_configs_upon_signal(&conf_path, conf, key_signers);
 
     info!("listening for sighup");
 
@@ -214,48 +211,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn create_dispatcher(conf_path: &str) -> Result<(SocketAddr, Ed25519SignatureDispatcher), Box<dyn std::error::Error>> {
-    let (config, keysigners, addr, tls_auth) = parse_confs(conf_path).await?;
+    let (config, keysigners, addr) = parse_confs(conf_path).await?;
     let config_path = conf_path.to_string();
     let dispatcher = Ed25519SignatureDispatcher {
         config: Arc::new(Mutex::new(config)),
-        tls_auth: Arc::new(Mutex::new(tls_auth)),
         keysigners: Arc::new(Mutex::new(keysigners)),
         config_path: Arc::new(config_path)
     };
     Ok((addr, dispatcher))
 }
 
-async fn parse_confs(conf_path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr, ClientTlsConfig), Box<dyn std::error::Error>> {
+async fn parse_confs(conf_path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr), Box<dyn std::error::Error>> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);
     let addr = config.bind_addr.parse()?;
-    let server_root_ca_cert = tokio::fs::read(&config.tlsauth.ca).await?;
-    let server_root_ca_cert = Certificate::from_pem(server_root_ca_cert);
-    let client_cert = tokio::fs::read(&config.tlsauth.client_cert).await?;
-    let client_key = tokio::fs::read(&config.tlsauth.client_key).await?;
-    let client_identity = Identity::from_pem(client_cert, client_key);
-    let tls_auth = ClientTlsConfig::new()
-        .ca_certificate(server_root_ca_cert)
-        .identity(client_identity);
-    Ok((config, keysigners, addr, tls_auth))
+    Ok((config, keysigners, addr))
 }
 
-async fn reload_configs_upon_signal(conf_path : &str, mut config_a: Arc<Mutex<DispatcherConfig>>, mut key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>,
-mut tls_auth_a: Arc<Mutex<ClientTlsConfig>>) -> Result<(), Box<dyn std::error::Error>> {
+async fn reload_configs_upon_signal(conf_path : &str, mut config_a: Arc<Mutex<DispatcherConfig>>, mut key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = signal(SignalKind::hangup())?;
 
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
         info!("got signal HUP");
-        let (config, keysigners, _, tls_auth) = parse_confs(conf_path).await?;
+        let (config, keysigners, _) = parse_confs(conf_path).await?;
         // config_a.clone_from(&Arc::new(config));
         let mut signers = key_signers_a.lock().unwrap();
         signers.clear();
         for bk in keysigners  {
             signers.push(bk)
         }
-        // tls_auth_a.clone_from(&Arc::new(tls_auth));
     }
 }
