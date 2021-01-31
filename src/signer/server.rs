@@ -18,6 +18,7 @@ use async_std::sync::{Arc, Mutex};
 use tokio::signal::unix::{SignalKind, signal};
 use remote_signer::common::config::{SignerConfig, BytesPubPriv};
 use async_std::net::SocketAddr;
+use log::LevelFilter;
 
 pub mod signer {
     tonic::include_proto!("signer");
@@ -68,7 +69,7 @@ impl Signer for Ed25519Signer {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::from_env().with_level(LevelFilter::Info).init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(Arg::with_name("config")
              .short("c")
@@ -97,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(SignerServer::new(signer))
         .serve(addr);
 
+    info!("listening for sighup");
 
     (serve.await?, signal.await?);
 
