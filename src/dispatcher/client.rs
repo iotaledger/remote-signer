@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = tonic::Request::new(SignMilestoneRequest {
         pub_keys: vec![
-            Vec::from_hex("3a0f0d32ed6e427c581da7ac52d22e727bee48c4af74a1850a57a2047c1e387e").unwrap()
+            Vec::from_hex("839d0a84fc988ebadfb641e7b434ccb719cbaf584b6f60451ac3b4b362975ea9").unwrap()
         ],
         ms_essence: "Sign this!".as_bytes().to_vec()
     });

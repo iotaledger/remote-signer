@@ -202,18 +202,23 @@ async fn parse_confs(conf_path: &str) -> Result<(DispatcherConfig, Vec<BytesKeyS
     Ok((config, keysigners, addr))
 }
 
-async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = signal(SignalKind::hangup())?;
+async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) {
+    let mut stream = signal(SignalKind::hangup())
+        .expect("Problems receiving signal");
 
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
-        info!("got signal HUP");
-        let (_, keysigners, _) = parse_confs(conf_path).await?;
-        let mut signers = key_signers_a.lock().await;
+        let conf = parse_confs(conf_path).await;
+        if conf.is_err() {
+            error!("Can't parse configs. {:?}", conf.err().unwrap());
+            continue;
+        }
+        let (_, keysigners, _) = conf.unwrap();
+        let mut signers = key_pairs.lock().await;
         signers.clear();
-        for signer in keysigners  {
-            signers.push(signer)
+        for signer in keysigners {
+            signers.push(signer);
         }
     }
 }
