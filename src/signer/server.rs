@@ -7,6 +7,7 @@ use signer::signer_server::{Signer, SignerServer};
 use signer::{SignWithKeyRequest, SignWithKeyResponse};
 
 use remote_signer::common::config;
+use futures::future;
 
 use clap::{App, Arg};
 
@@ -17,9 +18,11 @@ use ed25519_zebra::SigningKey;
 use async_std::sync::{Arc, Mutex};
 use tokio::signal::unix::{SignalKind, signal};
 use remote_signer::common::config::{SignerConfig, BytesPubPriv};
-use async_std::net::SocketAddr;
+use async_std::net::{SocketAddr, AddrParseError};
 use log::LevelFilter;
 use futures::TryFutureExt;
+use custom_error::custom_error;
+use remote_signer::RemoteSignerError;
 
 pub mod signer {
     tonic::include_proto!("signer");
@@ -28,6 +31,12 @@ pub mod signer {
 #[derive(Debug)]
 pub struct Ed25519Signer {
     keypairs: Arc<Mutex<Vec<config::BytesPubPriv>>>
+}
+
+// Note the use of braces rather than parentheses.
+custom_error!{MyError
+    Unknown{code:u8} = "unknown error with code {code}.",
+    Err41            = "Sit by a lake"
 }
 
 #[tonic::async_trait]
@@ -69,7 +78,7 @@ impl Signer for Ed25519Signer {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> remote_signer::Result<()> {
     SimpleLogger::from_env().with_level(LevelFilter::Info).init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(Arg::with_name("config")
@@ -95,18 +104,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Serving on {}...", addr);
     let signal = reload_configs_upon_signal(conf_path, Arc::clone(&signer.keypairs));
 
-    let serv = Server::builder()
+    let mut serv = Server::builder()
         .add_service(SignerServer::new(signer))
-        .serve(addr);
+        .serve(addr)
+        .map_err(|error| RemoteSignerError::from(error));
 
     info!("listening for sighup");
 
-    futures::join!(serv, signal);
+    let result = future::try_join(signal, serv)
+        .await;
 
-    Ok(())
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
-async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>) {
+async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>) -> remote_signer::Result<()> {
     let mut stream = signal(SignalKind::hangup())
         .expect("Problems receiving signal");
 
@@ -125,13 +139,14 @@ async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<By
             signers.push(signer);
         }
     }
+    Ok(())
 }
 
-
-async fn parse_confs(conf_path: &str) -> Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr), Box<dyn std::error::Error>> {
+async fn parse_confs(conf_path: &str) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_signer(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);
-    let addr = config.bind_addr.parse()?;
+    let addr = config.bind_addr.parse()
+        .map_err(|err| RemoteSignerError::from(err))?;
     Ok((config, keysigners, addr))
 }

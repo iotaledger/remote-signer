@@ -2,6 +2,8 @@ use serde::Deserialize;
 use hex::FromHex;
 use std::convert::{TryFrom, TryInto};
 use ed25519_zebra::{VerificationKey, VerificationKeyBytes, SigningKey};
+use crate::RemoteSignerError;
+
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct DispatcherConfig {
@@ -48,6 +50,7 @@ pub struct BytesPubPriv {
     pub privkey: Vec<u8>
 }
 
+
 fn validate_ed25519_pubkey(pubkey: &HexEd25519Key) -> bool {
     let pubkey_bytes: Vec<u8> = match pubkey.to_owned().try_into() {
         Ok(bytes) => bytes,
@@ -85,14 +88,14 @@ fn validate_ed25519_privkeys(keypairs: &Vec<HexPubPriv>) -> bool {
     keypairs.iter().all(|keypair| validate_ed25519_privkey(keypair))
 }
 
-pub fn parse_dispatcher(path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>), Box<dyn std::error::Error>> {
+pub fn parse_dispatcher(path: &str) -> crate::Result<(DispatcherConfig, Vec<BytesKeySigner>)> {
     let conf_file = config::File::new(path, config::FileFormat::Json);
     let mut conf = config::Config::default();
     conf.merge(conf_file)?;
     let conf = conf.try_into::<DispatcherConfig>()?;
     let pubkeys = conf.signers.iter().map(|signer| &signer.pubkey ).collect();
     if !validate_ed25519_pubkeys(pubkeys) {
-        return Err(Box::new(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 public keys is invalid."))));
+        return Err(RemoteSignerError::Config(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 public keys is invalid."))));
     }
     let keysigners: Vec<BytesKeySigner> = conf.signers.iter().map(|signer|
         BytesKeySigner {
@@ -103,17 +106,17 @@ pub fn parse_dispatcher(path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySig
     Ok((conf, keysigners))
 }
 
-pub fn parse_signer(path: &str) -> Result<(SignerConfig, Vec<BytesPubPriv>), Box<dyn std::error::Error>> {
+pub fn parse_signer(path: &str) -> crate::Result<(SignerConfig, Vec<BytesPubPriv>)> {
     let conf_file = config::File::new(path, config::FileFormat::Json);
     let mut conf = config::Config::default();
     conf.merge(conf_file)?;
     let conf = conf.try_into::<SignerConfig>()?;
     let pubkeys = conf.keys.iter().map(|keypair| &keypair.pubkey ).collect();
     if !validate_ed25519_pubkeys(pubkeys) {
-        return Err(Box::new(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 public keys is invalid."))));
+        return Err(RemoteSignerError::Config(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 public keys is invalid."))));
     }
     if !validate_ed25519_privkeys(&conf.keys) {
-        return Err(Box::new(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 private keys is invalid or does not match the corresponding public key."))));
+        return Err(RemoteSignerError::Config(config::ConfigError::Message(String::from("At least one of the configured HexEd25519 private keys is invalid or does not match the corresponding public key."))));
     }
     let keypairs: Vec<BytesPubPriv> = conf.keys.iter().map(|keypair|
         BytesPubPriv {

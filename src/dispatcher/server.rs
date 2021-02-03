@@ -7,7 +7,7 @@ use async_std::sync::{Arc, Mutex};
 
 use clap::{App, Arg};
 use ed25519_zebra::{Signature, VerificationKey};
-use futures::future;
+use futures::{future, TryFutureExt};
 use futures::join;
 use itertools::Itertools;
 use log::LevelFilter;
@@ -22,6 +22,7 @@ use remote_signer::common::config;
 use remote_signer::common::config::{BytesKeySigner, DispatcherConfig};
 use signer::signer_client::SignerClient;
 use signer::SignWithKeyRequest;
+use remote_signer::RemoteSignerError;
 
 pub mod dispatcher {
     tonic::include_proto!("dispatcher");
@@ -153,7 +154,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> remote_signer::Result<()> {
     SimpleLogger::from_env().with_level(LevelFilter::Info).init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(Arg::with_name("config")
@@ -175,19 +176,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let mut server = Server::builder();
-    let serv = server.add_service(SignatureDispatcherServer::new(dispatcher))
-        .serve(addr);
+    let serv = server
+        .add_service(SignatureDispatcherServer::new(dispatcher))
+        .serve(addr)
+        .map_err(|err| RemoteSignerError::from(err));
+
     info!("Serving on {}...", addr);
 
     let signal = reload_configs_upon_signal(&conf_path, key_signers);
 
     info!("listening for sighup");
 
-    futures::join!(serv, signal);
-    Ok(())
+    let result = future::try_join(serv, signal).await;
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
-async fn create_dispatcher(conf_path: &str) -> Result<(SocketAddr, Ed25519SignatureDispatcher), Box<dyn std::error::Error>> {
+async fn create_dispatcher(conf_path: &str) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
     let (_, keysigners, addr) = parse_confs(conf_path).await?;
     let dispatcher = Ed25519SignatureDispatcher {
         keysigners: Arc::new(Mutex::new(keysigners))
@@ -195,14 +203,14 @@ async fn create_dispatcher(conf_path: &str) -> Result<(SocketAddr, Ed25519Signat
     Ok((addr, dispatcher))
 }
 
-async fn parse_confs(conf_path: &str) -> Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr), Box<dyn std::error::Error>> {
+async fn parse_confs(conf_path: &str) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
     let addr = config.bind_addr.parse()?;
     Ok((config, keysigners, addr))
 }
 
-async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) {
+async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> remote_signer::Result<()> {
     let mut stream = signal(SignalKind::hangup())
         .expect("Problems receiving signal");
 
@@ -215,7 +223,7 @@ async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<V
             continue;
         }
         let (_, keysigners, _) = conf.unwrap();
-        let mut signers = key_pairs.lock().await;
+        let mut signers = key_signers_a.lock().await;
         signers.clear();
         for signer in keysigners {
             signers.push(signer);
