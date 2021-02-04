@@ -119,7 +119,7 @@ async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<By
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
-        let conf = parse_confs(conf_path).await;
+        let conf = parse_confs(conf_path);
         if conf.is_err() {
             error!("Can't parse configs. {:?}", conf.err().unwrap());
             continue;
@@ -133,7 +133,7 @@ async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<By
     }
 }
 
-async fn parse_confs(conf_path: &str) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
+fn parse_confs(conf_path: &str) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_signer(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);

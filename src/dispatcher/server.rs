@@ -162,7 +162,7 @@ async fn main() -> remote_signer::Result<()> {
     info!("Start");
 
     let conf_path = config_arg.value_of("config").unwrap();
-    let (addr, dispatcher) = create_dispatcher(conf_path).await?;
+    let (addr, dispatcher) = create_dispatcher(conf_path)?;
     debug!("Initialized Dispatcher server: {:?}", dispatcher);
 
     let key_signers = Arc::clone(&dispatcher.keysigners);
@@ -188,15 +188,15 @@ async fn main() -> remote_signer::Result<()> {
     }
 }
 
-async fn create_dispatcher(conf_path: &str) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
-    let (_, keysigners, addr) = parse_confs(conf_path).await?;
+fn create_dispatcher(conf_path: &str) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
+    let (_, keysigners, addr) = parse_confs(conf_path)?;
     let dispatcher = Ed25519SignatureDispatcher {
         keysigners: Arc::new(Mutex::new(keysigners))
     };
     Ok((addr, dispatcher))
 }
 
-async fn parse_confs(conf_path: &str) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
+fn parse_confs(conf_path: &str) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
     let addr = config.bind_addr.parse()?;
@@ -210,7 +210,7 @@ async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<V
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
-        let conf = parse_confs(conf_path).await;
+        let conf = parse_confs(conf_path);
         if conf.is_err() {
             error!("Can't parse configs. {:?}", conf.err().unwrap());
             continue;
