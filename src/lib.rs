@@ -12,7 +12,5 @@ pub enum RemoteSignerError {
     #[error("Something went wrong with network address parsing. `{0}'")]
     AddrParse(#[from] std::net::AddrParseError),
     #[error("Something went wrong. '{0}'")]
-    Anyhow(#[from] anyhow::Error),
-    #[error("Something went wrong. '{0}'")]
     Unknown(String),
 }

@@ -50,7 +50,6 @@ pub struct BytesPubPriv {
     pub privkey: Vec<u8>
 }
 
-
 fn validate_ed25519_pubkey(pubkey: &HexEd25519Key) -> bool {
     let pubkey_bytes: Vec<u8> = match pubkey.to_owned().try_into() {
         Ok(bytes) => bytes,

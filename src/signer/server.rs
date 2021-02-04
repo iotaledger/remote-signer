@@ -18,10 +18,8 @@ use ed25519_zebra::SigningKey;
 use async_std::sync::{Arc, Mutex};
 use tokio::signal::unix::{SignalKind, signal};
 use remote_signer::common::config::{SignerConfig, BytesPubPriv};
-use async_std::net::{SocketAddr, AddrParseError};
-use log::LevelFilter;
+use async_std::net::SocketAddr;
 use futures::TryFutureExt;
-use custom_error::custom_error;
 use remote_signer::RemoteSignerError;
 
 pub mod signer {
@@ -31,12 +29,6 @@ pub mod signer {
 #[derive(Debug)]
 pub struct Ed25519Signer {
     keypairs: Arc<Mutex<Vec<config::BytesPubPriv>>>
-}
-
-// Note the use of braces rather than parentheses.
-custom_error!{MyError
-    Unknown{code:u8} = "unknown error with code {code}.",
-    Err41            = "Sit by a lake"
 }
 
 #[tonic::async_trait]
@@ -79,7 +71,7 @@ impl Signer for Ed25519Signer {
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().with_level(LevelFilter::Info).init().unwrap();
+    SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(Arg::with_name("config")
              .short("c")
@@ -104,7 +96,7 @@ async fn main() -> remote_signer::Result<()> {
     info!("Serving on {}...", addr);
     let signal = reload_configs_upon_signal(conf_path, Arc::clone(&signer.keypairs));
 
-    let mut serv = Server::builder()
+    let serv = Server::builder()
         .add_service(SignerServer::new(signer))
         .serve(addr)
         .map_err(|error| RemoteSignerError::from(error));
@@ -139,7 +131,6 @@ async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<By
             signers.push(signer);
         }
     }
-    Ok(())
 }
 
 async fn parse_confs(conf_path: &str) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {

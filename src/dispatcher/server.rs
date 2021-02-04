@@ -8,9 +8,7 @@ use async_std::sync::{Arc, Mutex};
 use clap::{App, Arg};
 use ed25519_zebra::{Signature, VerificationKey};
 use futures::{future, TryFutureExt};
-use futures::join;
 use itertools::Itertools;
-use log::LevelFilter;
 use simple_logger::SimpleLogger;
 use tokio::signal::unix::{signal, SignalKind};
 use tonic::{Request, Response, Status, transport::Server};
@@ -155,7 +153,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().with_level(LevelFilter::Info).init().unwrap();
+    SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(Arg::with_name("config")
              .short("c")
