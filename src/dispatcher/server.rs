@@ -174,12 +174,9 @@ async fn main() -> remote_signer::Result<()> {
         .serve(addr)
         .map_err(|err| RemoteSignerError::from(err));
 
-    info!("Serving on {}...", addr);
-
     let signal = reload_configs_upon_signal(&conf_path, key_signers);
 
-    info!("listening for sighup");
-
+    info!("Serving on {}...", addr);
     let result = future::try_join(serv, signal).await;
 
     match result {
@@ -204,6 +201,7 @@ fn parse_confs(conf_path: &str) -> remote_signer::Result<(DispatcherConfig, Vec<
 }
 
 async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> remote_signer::Result<()> {
+    info!("listening for sighup");
     let mut stream = signal(SignalKind::hangup())
         .expect("Problems receiving signal");
 

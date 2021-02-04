@@ -93,7 +93,6 @@ async fn main() -> remote_signer::Result<()> {
     };
     debug!("Initialized Signer server: {:?}", signer);
 
-    info!("Serving on {}...", addr);
     let signal = reload_configs_upon_signal(conf_path, Arc::clone(&signer.keypairs));
 
     let serv = Server::builder()
@@ -101,7 +100,7 @@ async fn main() -> remote_signer::Result<()> {
         .serve(addr)
         .map_err(|error| RemoteSignerError::from(error));
 
-    info!("listening for sighup");
+    info!("Serving on {}...", addr);
 
     let result = future::try_join(signal, serv)
         .await;
@@ -113,6 +112,7 @@ async fn main() -> remote_signer::Result<()> {
 }
 
 async fn reload_configs_upon_signal(conf_path: &str, key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>) -> remote_signer::Result<()> {
+    info!("listening for sighup");
     let mut stream = signal(SignalKind::hangup())
         .expect("Problems receiving signal");
 
