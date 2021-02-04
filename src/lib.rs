@@ -5,7 +5,7 @@ pub type Result<T> = std::result::Result<T, RemoteSignerError>;
 
 #[derive(DeriveError, Debug)]
 pub enum RemoteSignerError {
-    #[error("Something went wrong while the server was running. '{0}'" )]
+    #[error("Something went wrong while the server was running. '{0}'")]
     TonicError(#[from] tonic::transport::Error),
     #[error("Something went wrong while parsing configs. `{0}'")]
     Config(#[from] config::ConfigError),

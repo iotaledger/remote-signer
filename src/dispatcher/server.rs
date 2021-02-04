@@ -1,9 +1,10 @@
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
+use async_std::sync::{Arc, Mutex};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::net::SocketAddr;
-use async_std::sync::{Arc, Mutex};
 
 use clap::{App, Arg};
 use ed25519_zebra::{Signature, VerificationKey};
@@ -11,16 +12,16 @@ use futures::{future, TryFutureExt};
 use itertools::Itertools;
 use simple_logger::SimpleLogger;
 use tokio::signal::unix::{signal, SignalKind};
-use tonic::{Request, Response, Status, transport::Server};
 use tonic::transport::Channel;
+use tonic::{transport::Server, Request, Response, Status};
 
-use dispatcher::{SignMilestoneRequest, SignMilestoneResponse};
 use dispatcher::signature_dispatcher_server::{SignatureDispatcher, SignatureDispatcherServer};
+use dispatcher::{SignMilestoneRequest, SignMilestoneResponse};
 use remote_signer::common::config;
 use remote_signer::common::config::{BytesKeySigner, DispatcherConfig};
+use remote_signer::RemoteSignerError;
 use signer::signer_client::SignerClient;
 use signer::SignWithKeyRequest;
-use remote_signer::RemoteSignerError;
 
 pub mod dispatcher {
     tonic::include_proto!("dispatcher");
@@ -32,17 +33,12 @@ pub mod signer {
 
 #[derive(Debug)]
 pub struct Ed25519SignatureDispatcher {
-    keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>
+    keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>,
 }
 
 impl Ed25519SignatureDispatcher {
-    async fn connect_signer(&self, endpoint: String) -> Result<Channel, Box<dyn Error>>
-    {
-        Ok(
-            Channel::from_shared(endpoint)?
-                .connect()
-                .await?
-        )
+    async fn connect_signer(&self, endpoint: String) -> Result<Channel, Box<dyn Error>> {
+        Ok(Channel::from_shared(endpoint)?.connect().await?)
     }
 }
 
@@ -52,7 +48,6 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         &self,
         request: Request<SignMilestoneRequest>,
     ) -> Result<Response<SignMilestoneResponse>, Status> {
-
         debug!("Got Request: {:?}", request);
 
         let r = request.get_ref();
@@ -62,16 +57,18 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let keysigners_guard = self.keysigners.lock().await;
         let mut matched_signers = pub_keys_unique.map(|pubkey| {
-            keysigners_guard.iter().find(
-                |keysigner| keysigner.pubkey == *pubkey
-            )
+            keysigners_guard
+                .iter()
+                .find(|keysigner| keysigner.pubkey == *pubkey)
         });
 
         if matched_signers.any(|signer| signer.is_none()) {
             warn!("Requested public key is not known!");
             warn!("Request: {:?}", request);
             warn!("Available Signers: {:?}", self.keysigners);
-            return Err(Status::invalid_argument("I don't know the signer for one or more of the provided public keys."))
+            return Err(Status::invalid_argument(
+                "I don't know the signer for one or more of the provided public keys.",
+            ));
         }
 
         let confirmed_signers = matched_signers.map(|signer| signer.unwrap());
@@ -80,52 +77,67 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let signatures = future::join_all(
             // map of Futures<Output=Result<SignWithKeyResponse, Error>>
-            confirmed_signers.clone().map(|signer|
-                async move {
-                     let channel = match self.connect_signer(signer.endpoint.clone()).await {
-                        Ok(channel) => channel,
-                        Err(e) => {
-                            error!("Error connecting to Signer!");
-                            error!("Signer: {:?}", signer);
-                            error!("Error: {:?}", e);
-                            return Err(Status::internal(format!("Could not connect to the Signer `{}`, {}", signer.endpoint, e)))
-                        }
-                    };
-
-                    let mut client = SignerClient::new(channel);
-
-                    let req = tonic::Request::new(SignWithKeyRequest {
-                        pub_key: signer.pubkey.to_owned(),
-                        ms_essence: r.ms_essence.to_owned()
-                    });
-
-                    debug!("Sending request to Signer `{}`: {:?}", signer.endpoint, req);
-                    let res = client.sign_with_key(req).await;
-                    if res.is_err() {
-                        error!("Error getting response from Signer `{}`: {:?}", signer.endpoint, res);
+            confirmed_signers.clone().map(|signer| async move {
+                let channel = match self.connect_signer(signer.endpoint.clone()).await {
+                    Ok(channel) => channel,
+                    Err(e) => {
+                        error!("Error connecting to Signer!");
+                        error!("Signer: {:?}", signer);
+                        error!("Error: {:?}", e);
+                        return Err(Status::internal(format!(
+                            "Could not connect to the Signer `{}`, {}",
+                            signer.endpoint, e
+                        )));
                     }
-                    debug!("Got Response from Signer `{}`: {:?}", signer.endpoint, res);
+                };
 
-                    let verification_key = VerificationKey::try_from(signer.pubkey.as_slice()).unwrap();
-                    let signature = match Signature::try_from(res.as_ref().unwrap().get_ref().signature.as_slice()) {
+                let mut client = SignerClient::new(channel);
+
+                let req = tonic::Request::new(SignWithKeyRequest {
+                    pub_key: signer.pubkey.to_owned(),
+                    ms_essence: r.ms_essence.to_owned(),
+                });
+
+                debug!("Sending request to Signer `{}`: {:?}", signer.endpoint, req);
+                let res = client.sign_with_key(req).await;
+                if res.is_err() {
+                    error!(
+                        "Error getting response from Signer `{}`: {:?}",
+                        signer.endpoint, res
+                    );
+                }
+                debug!("Got Response from Signer `{}`: {:?}", signer.endpoint, res);
+
+                let verification_key = VerificationKey::try_from(signer.pubkey.as_slice()).unwrap();
+                let signature =
+                    match Signature::try_from(res.as_ref().unwrap().get_ref().signature.as_slice())
+                    {
                         Ok(signature) => signature,
                         Err(e) => {
                             error!("Invalid signature format returned by Signer!");
                             error!("Signer: {:?}", signer);
                             error!("Error: {:?}", e);
-                            return Err(Status::internal(format!("Invalid signature format returned by signer `{}`, {:?}", signer.endpoint, e)))
+                            return Err(Status::internal(format!(
+                                "Invalid signature format returned by signer `{}`, {:?}",
+                                signer.endpoint, e
+                            )));
                         }
                     };
-                    if verification_key.verify(&signature, r.ms_essence.as_slice()).is_err() {
-                        error!("Invalid signature returned by Signer!");
-                        error!("Signer: {:?}", signer);
-                        error!("Signature: {:?}", signature);
-                        return Err(Status::internal(format!("Invalid signature returned by signer `{}`", signer.endpoint)))
-                    }
-
-                    res
+                if verification_key
+                    .verify(&signature, r.ms_essence.as_slice())
+                    .is_err()
+                {
+                    error!("Invalid signature returned by Signer!");
+                    error!("Signer: {:?}", signer);
+                    error!("Signature: {:?}", signature);
+                    return Err(Status::internal(format!(
+                        "Invalid signature returned by signer `{}`",
+                        signer.endpoint
+                    )));
                 }
-            )
+
+                res
+            }),
         );
 
         let signatures = signatures.await;
@@ -134,7 +146,10 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         }
 
         let reply = SignMilestoneResponse {
-            signatures: signatures.iter().map(|signature| signature.as_ref().unwrap().get_ref().to_owned().signature).collect()
+            signatures: signatures
+                .iter()
+                .map(|signature| signature.as_ref().unwrap().get_ref().to_owned().signature)
+                .collect(),
         };
 
         info!("Successfully signed.");
@@ -150,14 +165,16 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 async fn main() -> remote_signer::Result<()> {
     SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
-        .arg(Arg::with_name("config")
-             .short("c")
-             .long("config")
-             .takes_value(true)
-             .value_name("FILE")
-             .default_value("dispatcher_config.json")
-             .help("Dispatcher .json configuration file")
-        ).get_matches();
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .takes_value(true)
+                .value_name("FILE")
+                .default_value("dispatcher_config.json")
+                .help("Dispatcher .json configuration file"),
+        )
+        .get_matches();
 
     info!("Start");
 
@@ -166,7 +183,6 @@ async fn main() -> remote_signer::Result<()> {
     debug!("Initialized Dispatcher server: {:?}", dispatcher);
 
     let key_signers = Arc::clone(&dispatcher.keysigners);
-
 
     let mut server = Server::builder();
     let serv = server
@@ -185,25 +201,31 @@ async fn main() -> remote_signer::Result<()> {
     }
 }
 
-fn create_dispatcher(conf_path: &str) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
+fn create_dispatcher(
+    conf_path: &str,
+) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
     let (_, keysigners, addr) = parse_confs(conf_path)?;
     let dispatcher = Ed25519SignatureDispatcher {
-        keysigners: Arc::new(Mutex::new(keysigners))
+        keysigners: Arc::new(Mutex::new(keysigners)),
     };
     Ok((addr, dispatcher))
 }
 
-fn parse_confs(conf_path: &str) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
+fn parse_confs(
+    conf_path: &str,
+) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
     let addr = config.bind_addr.parse()?;
     Ok((config, keysigners, addr))
 }
 
-async fn reload_configs_upon_signal(conf_path : &str, key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>) -> remote_signer::Result<()> {
+async fn reload_configs_upon_signal(
+    conf_path: &str,
+    key_signers_a: Arc<Mutex<Vec<BytesKeySigner>>>,
+) -> remote_signer::Result<()> {
     info!("listening for sighup");
-    let mut stream = signal(SignalKind::hangup())
-        .expect("Problems receiving signal");
+    let mut stream = signal(SignalKind::hangup()).expect("Problems receiving signal");
 
     // Print whenever a HUP signal is received
     loop {
