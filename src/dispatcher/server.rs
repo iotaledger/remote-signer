@@ -57,29 +57,24 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let r = request.get_ref();
         // Check that the pubkeys do not repeat
-        let mut pub_keys_unique = r.pub_keys.iter().unique();
+        let pub_keys_unique = r.pub_keys.iter().unique();
         // We do not need to check for the lexicographical sorting of the keys, it is not our job
 
-        let mut matched_signers: Vec<Option<BytesKeySigner>> = Vec::new();
-        {
-            let keysigners_guard = self.keysigners.lock().await;
-            for signer in keysigners_guard.iter() {
-                if pub_keys_unique.any(|key| signer.pubkey.eq(key)) {
-                    matched_signers.push(Some(signer.to_owned()));
-                }
-            }
-        }
+        let keysigners_guard = self.keysigners.lock().await;
+        let mut matched_signers = pub_keys_unique.map(|pubkey| {
+            keysigners_guard.iter().find(
+                |keysigner| keysigner.pubkey == *pubkey
+            )
+        });
 
-
-        // Clone the iterator to avoid consuming it for the next map
-        if matched_signers.is_empty() {
+        if matched_signers.any(|signer| signer.is_none()) {
             warn!("Requested public key is not known!");
             warn!("Request: {:?}", request);
             warn!("Available Signers: {:?}", self.keysigners);
             return Err(Status::invalid_argument("I don't know the signer for one or more of the provided public keys."))
         }
 
-        let confirmed_signers = matched_signers.iter().map(|signer| signer.as_ref().unwrap());
+        let confirmed_signers = matched_signers.map(|signer| signer.unwrap());
 
         info!("Got Request that matches signers: {:?}", confirmed_signers);
 
