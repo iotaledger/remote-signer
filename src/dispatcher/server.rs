@@ -12,8 +12,8 @@ use futures::{future, TryFutureExt};
 use itertools::Itertools;
 use simple_logger::SimpleLogger;
 use tokio::signal::unix::{signal, SignalKind};
-use tonic::transport::Channel;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::transport::{Channel, Server};
+use tonic::{Request, Response, Status};
 
 use dispatcher::signature_dispatcher_server::{SignatureDispatcher, SignatureDispatcherServer};
 use dispatcher::{SignMilestoneRequest, SignMilestoneResponse};

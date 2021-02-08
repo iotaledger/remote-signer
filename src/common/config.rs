@@ -77,7 +77,7 @@ fn validate_ed25519_privkey(keypair: &HexPubPriv) -> bool {
             };
             let pubkey_computed = VerificationKeyBytes::from(&privkey_provided);
             pubkey_provided_bytes == pubkey_computed.as_ref()
-        }
+        },
         _ => false,
     }
 }
