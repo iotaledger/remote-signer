@@ -62,7 +62,8 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
                 .find(|keysigner| keysigner.pubkey == *pubkey)
         });
 
-        if matched_signers.any(|signer| signer.is_none()) {
+        // Clone the iterator to avoid consuming it for the next map
+        if matched_signers.clone().any(|signer| signer.is_none()) {
             warn!("Requested public key is not known!");
             warn!("Request: {:?}", request);
             warn!("Available Signers: {:?}", self.keysigners);
