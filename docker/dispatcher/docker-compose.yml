@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+
+  dispatcher:
+    image: remote-signer.dispatcher
+    build:
+      context: ../../
+      dockerfile: docker/dispatcher/Dockerfile
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=debug
+    volumes:
+      - ./config:/config:ro
+    command:
+      --config ./config/dispatcher_config.json
+    ports:
+      - "127.0.0.1:50051:50051"
+
+  nginx:
+    image: nginx:1.19
+    restart: always
+    expose:
+      - "8081"
+    volumes:
+      - ./nginx-conf/proxy.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+

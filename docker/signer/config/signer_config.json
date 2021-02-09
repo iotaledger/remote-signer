@@ -1,0 +1,9 @@
+{
+  "bind_addr": "0.0.0.0:50052",
+  "keys": [
+    {
+      "pubkey": "839d0a84fc988ebadfb641e7b434ccb719cbaf584b6f60451ac3b4b362975ea9",
+      "privkey": "c6d146fa4c47b220ee78f205dd6063af80ca74458a46580597899ee0f0ad247d"
+    }
+  ]
+}

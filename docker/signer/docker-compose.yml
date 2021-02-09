@@ -1,0 +1,58 @@
+version: '3'
+
+services:
+  reverse-proxy:
+    # The official v2.0 Traefik docker 
+    # remove library
+    image: traefik:v2.4
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+    - -certificatesresolvers.devops.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
+    - -accesslog=true
+    - -accesslog.filepath=/opt/logs/access.log
+    - -providers.docker
+    - -entrypoints.web.address=:80
+    - -entrypoints.web.http.redirections.entrypoint.to=websecure
+    - -entrypoints.web.http.redirections.entrypoint.scheme=https
+    - -entrypoints.websecure.address=:443
+    - -certificatesresolvers.devops.acme.tlschallenge=true
+    - -certificatesresolvers.devops.acme.email=user@example.com #change email
+    - -certificatesresolvers.devops.acme.storage=/letsencrypt/acme.json
+    restart: always
+    ports:
+      # The HTTP port
+      - "80:80"
+      # The HTTPS port
+      - "443:443"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_logs:/opt/logs
+      - ./letsencrypt:/letsencrypt
+
+  signer:
+    image: remote-signer.signer
+    build:
+      context: ../../
+      dockerfile: docker/signer/Dockerfile
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./config:/config:ro
+    command:
+      --config /config/signer_config.json
+    expose:
+      - "50052"
+    labels:
+      - "traefik.enable=true"
+      #change host
+      - "traefik.http.routers.signer.rule=Host(`signer.iota`)"
+      - "traefik.http.routers.signer.service=signer"
+      - "traefik.http.services.signer.loadbalancer.server.port=50052"
+      - "traefik.http.services.signer.loadbalancer.server.scheme=h2c"
+      - "traefik.http.routers.signer.entrypoints=websecure"
+      - "traefik.http.routers.signer.tls.certresolver=devops"
+      - "traefik.tls.options.default.clientAuth.caFiles=[/config/ca.crt]"
+      - "traefik.tls.options.default.clientAuth.clientAuthType=RequireAndVerifyClientCert"
+

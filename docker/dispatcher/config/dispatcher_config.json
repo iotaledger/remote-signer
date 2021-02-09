@@ -1,0 +1,9 @@
+{
+  "bind_addr": "0.0.0.0:50051",
+  "signers": [
+    {
+      "pubkey":  "839d0a84fc988ebadfb641e7b434ccb719cbaf584b6f60451ac3b4b362975ea9",
+      "endpoint": "http://nginx:8081"
+    }
+  ]
+}
