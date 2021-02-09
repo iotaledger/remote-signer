@@ -136,9 +136,7 @@ async fn reload_configs_upon_signal(
         let (_, keysigners, _) = conf.unwrap();
         let mut signers = key_pairs.lock().await;
         signers.clear();
-        for signer in keysigners {
-            signers.push(signer);
-        }
+        signers.extend_from_slice(&keysigners);
     }
 }
 

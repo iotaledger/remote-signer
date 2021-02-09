@@ -43,7 +43,7 @@ pub struct BytesKeySigner {
     pub endpoint: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BytesPubPriv {
     pub pubkey: Vec<u8>,
     pub privkey: Vec<u8>,
