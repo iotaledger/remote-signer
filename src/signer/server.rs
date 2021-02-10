@@ -86,7 +86,7 @@ async fn main() -> remote_signer::Result<()> {
                 .takes_value(true)
                 .value_name("FILE")
                 .default_value("signer_config.json")
-                .help("Dispatcher .json configuration file"),
+                .help("Signer .json configuration file"),
         )
         .get_matches();
 
