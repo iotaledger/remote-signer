@@ -56,7 +56,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         // We do not need to check for the lexicographical sorting of the keys, it is not our job
 
         let keysigners_guard = self.keysigners.lock().await;
-        let mut matched_signers = pub_keys_unique.map(|pubkey| {
+        let matched_signers = pub_keys_unique.map(|pubkey| {
             keysigners_guard
                 .iter()
                 .find(|keysigner| keysigner.pubkey == *pubkey)
