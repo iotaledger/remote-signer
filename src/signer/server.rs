@@ -94,7 +94,7 @@ async fn reload_configs_upon_signal(
         let mut signers = key_pairs.lock().await;
         signers.clear();
         signers.extend_from_slice(&keysigners);
-        info!("Configuration reloaded upon sighup")
+        info!("Configuration reloaded upon sighup");
     }
 }
 
