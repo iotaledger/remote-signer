@@ -146,9 +146,7 @@ async fn main() -> remote_signer::Result<()> {
 
     info!("Serving on {}...", addr);
 
-    let result = future::try_join(signal, serv).await;
-
-    match result {
+    match future::try_join(signal, serv).await {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
