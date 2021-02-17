@@ -1,19 +1,27 @@
 use std::convert::TryFrom;
 
+use tonic::transport::Server;
 use tonic::{Request, Response, Status};
-use tonic::transport::{Server, ServerTlsConfig, Certificate, Identity};
 
 use signer::signer_server::{Signer, SignerServer};
 use signer::{SignWithKeyRequest, SignWithKeyResponse};
 
+use futures::future;
 use remote_signer::common::config;
 
 use clap::{App, Arg};
 
 use simple_logger::SimpleLogger;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
+use async_std::net::SocketAddr;
+use async_std::sync::{Arc, Mutex};
 use ed25519_zebra::SigningKey;
+use futures::TryFutureExt;
+use remote_signer::common::config::{BytesPubPriv, SignerConfig};
+use remote_signer::RemoteSignerError;
+use tokio::signal::unix::{signal, SignalKind};
 
 pub mod signer {
     tonic::include_proto!("signer");
@@ -21,8 +29,7 @@ pub mod signer {
 
 #[derive(Debug)]
 pub struct Ed25519Signer {
-    config: config::SignerConfig,
-    keypairs: Vec<config::BytesPubPriv>
+    keypairs: Arc<Mutex<Vec<config::BytesPubPriv>>>,
 }
 
 #[tonic::async_trait]
@@ -31,19 +38,25 @@ impl Signer for Ed25519Signer {
         &self,
         request: Request<SignWithKeyRequest>,
     ) -> Result<Response<SignWithKeyResponse>, Status> {
-
         debug!("Got Request: {:?}", request);
 
         let r = request.get_ref();
-        let matched_key = match self.keypairs.iter().find(
-            |pair| pair.pubkey == r.pub_key
-        ) {
+        let keys_guard = self.keypairs.lock().await;
+        let matched_key = match keys_guard.iter().find(|pair| pair.pubkey == r.pub_key) {
             Some(key) => key,
             None => {
                 warn!("Requested public key is not known!");
                 warn!("Request: {:?}", request);
-                warn!("Available Pubkeys: {:?}", self.keypairs.iter().map(|pair| pair.pubkey.clone()).collect::<Vec<Vec<u8>>>());
-                return Err(Status::invalid_argument("This signer does not sign with the provided key."))
+                warn!(
+                    "Available Pubkeys: {:?}",
+                    keys_guard
+                        .iter()
+                        .map(|pair| pair.pubkey.clone())
+                        .collect::<Vec<Vec<u8>>>()
+                );
+                return Err(Status::invalid_argument(
+                    "This signer does not sign with the provided key.",
+                ));
             }
         };
 
@@ -51,7 +64,7 @@ impl Signer for Ed25519Signer {
         let signature = sk.sign(r.ms_essence.as_ref());
 
         let reply = SignWithKeyResponse {
-            signature: <[u8; 64]>::from(signature).to_vec()
+            signature: <[u8; 64]>::from(signature).to_vec(),
         };
 
         info!("Successfully signed.");
@@ -62,43 +75,79 @@ impl Signer for Ed25519Signer {
     }
 }
 
+async fn reload_configs_upon_signal(
+    conf_path: &str,
+    key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>,
+) -> remote_signer::Result<()> {
+    info!("listening for sighup");
+    let mut stream = signal(SignalKind::hangup()).expect("Problems receiving signal");
+
+    // Print whenever a HUP signal is received
+    loop {
+        stream.recv().await;
+        let conf = parse_confs(conf_path);
+        if conf.is_err() {
+            error!("Can't parse configs. {:?}", conf.err().unwrap());
+            continue;
+        }
+        let (_, keysigners, _) = conf.unwrap();
+        let mut signers = key_pairs.lock().await;
+        signers.clear();
+        signers.extend_from_slice(&keysigners);
+        info!("Configuration reloaded upon sighup");
+    }
+}
+
+fn parse_confs(
+    conf_path: &str,
+) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
+    info!("Parsing configuration file `{}`.", conf_path);
+    let (config, keysigners) = config::parse_signer(conf_path)?;
+    debug!("Parsed configuration file: {:?}", config);
+    let addr = config
+        .bind_addr
+        .parse::<SocketAddr>()
+        .map_err(|err| RemoteSignerError::from(err))?;
+    Ok((config, keysigners, addr))
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> remote_signer::Result<()> {
     SimpleLogger::from_env().init().unwrap();
     let config_arg = App::new("Remote Signer")
-        .arg(Arg::with_name("config")
-             .short("c")
-             .long("config")
-             .takes_value(true)
-             .value_name("FILE")
-             .default_value("signer_config.json")
-             .help("Dispatcher .json configuration file")
-        ).get_matches();
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .takes_value(true)
+                .value_name("FILE")
+                .default_value("signer_config.json")
+                .help("Signer .json configuration file"),
+        )
+        .get_matches();
 
     let conf_path = config_arg.value_of("config").unwrap();
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keypairs) = config::parse_signer(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);
-    let addr = config.bind_addr.parse()?;
-    let server_cert = tokio::fs::read(&config.tls.cert).await?;
-    let server_key = tokio::fs::read(&config.tls.key).await?;
-    let server_identity = Identity::from_pem(server_cert, server_key);
-    let client_ca_cert = tokio::fs::read(&config.tls.ca).await?;
-    let client_ca_cert = Certificate::from_pem(client_ca_cert);
-    let tls = ServerTlsConfig::new()
-        .identity(server_identity)
-        .client_ca_root(client_ca_cert);
+    let addr = config.bind_addr.parse::<SocketAddr>()?;
 
-    let signer = Ed25519Signer { config, keypairs };
+    let signer = Ed25519Signer {
+        keypairs: Arc::new(Mutex::new(keypairs)),
+    };
     debug!("Initialized Signer server: {:?}", signer);
+
+    let signal = reload_configs_upon_signal(conf_path, Arc::clone(&signer.keypairs));
+
+    let serv = Server::builder()
+        .add_service(SignerServer::new(signer))
+        .serve(addr)
+        .map_err(|error| RemoteSignerError::from(error));
 
     info!("Serving on {}...", addr);
 
-    Server::builder()
-        .tls_config(tls)?
-        .add_service(SignerServer::new(signer))
-        .serve(addr)
-        .await?;
-
-    Ok(())
+    match future::try_join(signal, serv).await {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
 }

@@ -18,9 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         ms_essence: "Sign this!".as_bytes().to_vec()
     });
-    
+
     let response = client.sign_milestone(request).await?;
-    
+
     println!("RESPONSE={:?}", response);
 
     Ok(())
