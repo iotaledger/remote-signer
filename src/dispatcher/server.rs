@@ -177,7 +177,7 @@ fn parse_confs(
 ) -> remote_signer::Result<(DispatcherConfig, Vec<BytesKeySigner>, SocketAddr)> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keysigners) = config::parse_dispatcher(conf_path)?;
-    let addr = config.bind_addr.parse()?;
+    let addr = config.bind_addr.parse::<SocketAddr>()?;
     Ok((config, keysigners, addr))
 }
 

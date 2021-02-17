@@ -105,7 +105,7 @@ fn parse_confs(
     debug!("Parsed configuration file: {:?}", config);
     let addr = config
         .bind_addr
-        .parse()
+        .parse::<SocketAddr>()
         .map_err(|err| RemoteSignerError::from(err))?;
     Ok((config, keysigners, addr))
 }
@@ -129,7 +129,7 @@ async fn main() -> remote_signer::Result<()> {
     info!("Parsing configuration file `{}`.", conf_path);
     let (config, keypairs) = config::parse_signer(conf_path)?;
     debug!("Parsed configuration file: {:?}", config);
-    let addr = config.bind_addr.parse()?;
+    let addr = config.bind_addr.parse::<SocketAddr>()?;
 
     let signer = Ed25519Signer {
         keypairs: Arc::new(Mutex::new(keypairs)),
