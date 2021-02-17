@@ -162,46 +162,6 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
     }
 }
 
-#[tokio::main]
-async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
-    let config_arg = App::new("Remote Signer Dispatcher")
-        .arg(
-            Arg::with_name("config")
-                .short("c")
-                .long("config")
-                .takes_value(true)
-                .value_name("FILE")
-                .default_value("dispatcher_config.json")
-                .help("Dispatcher .json configuration file"),
-        )
-        .get_matches();
-
-    info!("Start");
-
-    let conf_path = config_arg.value_of("config").unwrap();
-    let (addr, dispatcher) = create_dispatcher(conf_path)?;
-    debug!("Initialized Dispatcher server: {:?}", dispatcher);
-
-    let key_signers = Arc::clone(&dispatcher.keysigners);
-
-    let mut server = Server::builder();
-    let serv = server
-        .add_service(SignatureDispatcherServer::new(dispatcher))
-        .serve(addr)
-        .map_err(|err| RemoteSignerError::from(err));
-
-    let signal = reload_configs_upon_signal(&conf_path, key_signers);
-
-    info!("Serving on {}...", addr);
-    let result = future::try_join(serv, signal).await;
-
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
 fn create_dispatcher(
     conf_path: &str,
 ) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
@@ -240,5 +200,43 @@ async fn reload_configs_upon_signal(
         let mut signers = key_signers_a.lock().await;
         signers.clear();
         signers.extend_from_slice(&keysigners);
+    }
+}
+
+#[tokio::main]
+async fn main() -> remote_signer::Result<()> {
+    SimpleLogger::from_env().init().unwrap();
+    let config_arg = App::new("Remote Signer Dispatcher")
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .takes_value(true)
+                .value_name("FILE")
+                .default_value("dispatcher_config.json")
+                .help("Dispatcher .json configuration file"),
+        )
+        .get_matches();
+
+    info!("Start");
+
+    let conf_path = config_arg.value_of("config").unwrap();
+    let (addr, dispatcher) = create_dispatcher(conf_path)?;
+    debug!("Initialized Dispatcher server: {:?}", dispatcher);
+
+    let key_signers = Arc::clone(&dispatcher.keysigners);
+
+    let mut server = Server::builder();
+    let serv = server
+        .add_service(SignatureDispatcherServer::new(dispatcher))
+        .serve(addr)
+        .map_err(|err| RemoteSignerError::from(err));
+
+    let signal = reload_configs_upon_signal(&conf_path, key_signers);
+
+    info!("Serving on {}...", addr);
+    match future::try_join(serv, signal).await {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
     }
 }

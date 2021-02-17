@@ -75,6 +75,41 @@ impl Signer for Ed25519Signer {
     }
 }
 
+async fn reload_configs_upon_signal(
+    conf_path: &str,
+    key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>,
+) -> remote_signer::Result<()> {
+    info!("listening for sighup");
+    let mut stream = signal(SignalKind::hangup()).expect("Problems receiving signal");
+
+    // Print whenever a HUP signal is received
+    loop {
+        stream.recv().await;
+        let conf = parse_confs(conf_path);
+        if conf.is_err() {
+            error!("Can't parse configs. {:?}", conf.err().unwrap());
+            continue;
+        }
+        let (_, keysigners, _) = conf.unwrap();
+        let mut signers = key_pairs.lock().await;
+        signers.clear();
+        signers.extend_from_slice(&keysigners);
+    }
+}
+
+fn parse_confs(
+    conf_path: &str,
+) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
+    info!("Parsing configuration file `{}`.", conf_path);
+    let (config, keysigners) = config::parse_signer(conf_path)?;
+    debug!("Parsed configuration file: {:?}", config);
+    let addr = config
+        .bind_addr
+        .parse()
+        .map_err(|err| RemoteSignerError::from(err))?;
+    Ok((config, keysigners, addr))
+}
+
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
     SimpleLogger::from_env().init().unwrap();
@@ -116,39 +151,4 @@ async fn main() -> remote_signer::Result<()> {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
-}
-
-async fn reload_configs_upon_signal(
-    conf_path: &str,
-    key_pairs: Arc<Mutex<Vec<BytesPubPriv>>>,
-) -> remote_signer::Result<()> {
-    info!("listening for sighup");
-    let mut stream = signal(SignalKind::hangup()).expect("Problems receiving signal");
-
-    // Print whenever a HUP signal is received
-    loop {
-        stream.recv().await;
-        let conf = parse_confs(conf_path);
-        if conf.is_err() {
-            error!("Can't parse configs. {:?}", conf.err().unwrap());
-            continue;
-        }
-        let (_, keysigners, _) = conf.unwrap();
-        let mut signers = key_pairs.lock().await;
-        signers.clear();
-        signers.extend_from_slice(&keysigners);
-    }
-}
-
-fn parse_confs(
-    conf_path: &str,
-) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
-    info!("Parsing configuration file `{}`.", conf_path);
-    let (config, keysigners) = config::parse_signer(conf_path)?;
-    debug!("Parsed configuration file: {:?}", config);
-    let addr = config
-        .bind_addr
-        .parse()
-        .map_err(|err| RemoteSignerError::from(err))?;
-    Ok((config, keysigners, addr))
 }
