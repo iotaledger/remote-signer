@@ -191,6 +191,7 @@ async fn reload_configs_upon_signal(
     // Print whenever a HUP signal is received
     loop {
         stream.recv().await;
+        info!("sighup received");
         let conf = parse_confs(conf_path);
         if conf.is_err() {
             error!("Can't parse configs. {:?}", conf.err().unwrap());
