@@ -10,7 +10,7 @@ RUN cargo install --bin dispatcher-server --path . --root  /dispatcher-install
 ############################
 # Image
 ############################
-FROM gcr.io/distroless/base-debian10
+FROM gcr.io/distroless/cc-debian10
 COPY --from=build /dispatcher-install .
 
 ENTRYPOINT ["/bin/dispatcher-server"]
