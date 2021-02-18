@@ -9,7 +9,7 @@ RUN cargo install --bin signer-server --path . --root  /signer-install
 ############################
 # Image
 ############################
-FROM rust:latest
+FROM gcr.io/distroless/base-debian10
 COPY --from=build /signer-install .
 
 ENTRYPOINT ["/bin/signer-server"]
