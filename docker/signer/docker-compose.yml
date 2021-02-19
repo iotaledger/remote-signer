@@ -53,6 +53,6 @@ services:
       - "traefik.http.services.signer.loadbalancer.server.scheme=h2c"
       - "traefik.http.routers.signer.entrypoints=websecure"
       - "traefik.http.routers.signer.tls.certresolver=devops"
-      - "traefik.tls.options.default.clientAuth.caFiles=[/config/ca.crt]"
-      - "traefik.tls.options.default.clientAuth.clientAuthType=RequireAndVerifyClientCert"
+      - "traefik.http.routers.signer.tls.options.default.clientAuth.caFiles=[/certs/ca.crt]"
+      - "traefik.http.routers.signer.tls.options.default.clientAuth.clientAuthType=RequestClientCert"
 
