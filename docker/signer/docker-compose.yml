@@ -1,41 +1,42 @@
 version: '3'
 
 services:
+
+  volumes:
+    logs:
+    letsencrypt:
+
   reverse-proxy:
-    # The official v2.0 Traefik docker 
-    # remove library
     image: traefik:v2.4
-    # Enables the web UI and tells Traefik to listen to docker
     command:
-    - -certificatesresolvers.devops.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
-    - -accesslog=true
-    - -accesslog.filepath=/opt/logs/access.log
-    - -providers.docker
-    - -entrypoints.web.address=:80
-    - -entrypoints.web.http.redirections.entrypoint.to=websecure
-    - -entrypoints.web.http.redirections.entrypoint.scheme=https
-    - -entrypoints.websecure.address=:443
-    - -certificatesresolvers.devops.acme.tlschallenge=true
-    - -certificatesresolvers.devops.acme.email=user@example.com #change email
-    - -certificatesresolvers.devops.acme.storage=/letsencrypt/acme.json
-    restart: always
+    - --accesslog=true
+    - --accesslog.filepath=/opt/logs/access.log
+    - --providers.docker
+    - --providers.file.directory=/etc/traefik/conf
+    - --entrypoints.web.address=:80
+    - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    - --entrypoints.websecure.address=:443
+    - --certificatesresolvers.acme.acme.tlschallenge=true
+    - --certificatesresolvers.acme.acme.email=example@example.org
+    - --certificatesresolvers.acme.acme.storage=/letsencrypt/acme.json
+    restart: unless-stopped
     ports:
-      # The HTTP port
       - "80:80"
-      # The HTTPS port
       - "443:443"
     volumes:
       # So that Traefik can listen to the Docker events
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik_logs:/opt/logs
-      - ./letsencrypt:/letsencrypt
+      - logs:/opt/logs
+      - letsencrypt:/letsencrypt
+      - ./config/certs:/certs:ro
+      - ./config/mtls.toml:/etc/traefik/conf/mtls.toml:ro
 
   signer:
-    image: remote-signer.signer
     build:
       context: ../../
       dockerfile: docker/signer/Dockerfile
-    restart: unless-stopped
+    restart: no
     environment:
       - RUST_LOG=info
     volumes:
@@ -46,13 +47,11 @@ services:
       - "50052"
     labels:
       - "traefik.enable=true"
-      #change host
-      - "traefik.http.routers.signer.rule=Host(`signer.iota`)"
+      - "traefik.http.routers.signer.rule=Host(`YOURSIGNERHOSTHERE`)"
       - "traefik.http.routers.signer.service=signer"
       - "traefik.http.services.signer.loadbalancer.server.port=50052"
       - "traefik.http.services.signer.loadbalancer.server.scheme=h2c"
       - "traefik.http.routers.signer.entrypoints=websecure"
-      - "traefik.http.routers.signer.tls.certresolver=devops"
-      - "traefik.http.routers.signer.tls.options.default.clientAuth.caFiles=[/certs/ca.crt]"
-      - "traefik.http.routers.signer.tls.options.default.clientAuth.clientAuthType=RequestClientCert"
-
+      - "traefik.http.routers.signer.tls=true"
+      - "traefik.http.routers.signer.tls.certresolver=acme"
+      - "traefik.http.routers.signer.tls.options=mTLS@file"

@@ -2,16 +2,18 @@
 # Build
 ############################
 FROM rust:latest as build
-WORKDIR build
-COPY . .
+COPY . /src
+WORKDIR /src
 RUN rustup component add rustfmt
-RUN cargo install --bin dispatcher-server --path . --root  /dispatcher-install
+RUN cargo build --release --bin dispatcher-server
 
 ############################
 # Image
 ############################
-FROM gcr.io/distroless/cc-debian10
-COPY --from=build /dispatcher-install .
+FROM gcr.io/distroless/base@sha256:5e0cc69445ed1d8a17198250a7249d56dd4b6966bb6b2118e60ae9194c310647
+COPY --from=build /lib/x86_64-linux-gnu/libgcc_s.so.1 /lib/x86_64-linux-gnu/
 
-ENTRYPOINT ["/bin/dispatcher-server"]
+COPY --from=build /src/target/release/dispatcher-server /
+
+ENTRYPOINT ["/dispatcher-server"]
 CMD ["--config=/config/dispatcher_config.json"]

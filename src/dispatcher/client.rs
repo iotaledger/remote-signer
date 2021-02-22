@@ -9,11 +9,11 @@ pub mod dispatcher {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = SignatureDispatcherClient::connect("http://privatenet:80").await?;
+    let mut client = SignatureDispatcherClient::connect("http://localhost:50051").await?;
 
     let request = tonic::Request::new(SignMilestoneRequest {
         pub_keys: vec![
-            Vec::from_hex("839d0a84fc988ebadfb641e7b434ccb719cbaf584b6f60451ac3b4b362975ea9").unwrap(),
+            Vec::from_hex("YOURPUBLICKEYHERE").unwrap(),
         ],
         ms_essence: "Sign this!".as_bytes().to_vec()
     });
