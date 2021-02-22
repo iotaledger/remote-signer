@@ -6,7 +6,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/dispatcher/Dockerfile
-    restart: no
+    restart: "no"
     environment:
       - RUST_LOG=info
     volumes:
@@ -18,7 +18,7 @@ services:
 
   nginx:
     image: nginx:1.19-alpine
-    restart: unless-stopped
+    restart: "unless-stopped"
     expose:
       - "8080"
     volumes:

@@ -1,10 +1,10 @@
 version: '3'
 
-services:
+volumes:
+  logs:
+  letsencrypt:
 
-  volumes:
-    logs:
-    letsencrypt:
+services:
 
   reverse-proxy:
     image: traefik:v2.4
@@ -20,7 +20,7 @@ services:
     - --certificatesresolvers.acme.acme.tlschallenge=true
     - --certificatesresolvers.acme.acme.email=example@example.org
     - --certificatesresolvers.acme.acme.storage=/letsencrypt/acme.json
-    restart: unless-stopped
+    restart: "unless-stopped"
     ports:
       - "80:80"
       - "443:443"
@@ -36,7 +36,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/signer/Dockerfile
-    restart: no
+    restart: "no"
     environment:
       - RUST_LOG=info
     volumes:
