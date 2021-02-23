@@ -1,0 +1,9 @@
+{
+  "bind_addr": "0.0.0.0:50052",
+  "keys": [
+    {
+      "pubkey": "YOURPUBLICKEYHERE",
+      "privkey": "YOUROPRIVATEKEYHERE"
+    }
+  ]
+}

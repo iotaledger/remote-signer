@@ -1,0 +1,9 @@
+{
+  "bind_addr": "0.0.0.0:50051",
+  "signers": [
+    {
+      "pubkey":  "YOURPUBLICKEYHERE",
+      "endpoint": "http://nginx:8080"
+    }
+  ]
+}

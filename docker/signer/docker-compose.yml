@@ -1,0 +1,57 @@
+version: '3'
+
+volumes:
+  logs:
+  letsencrypt:
+
+services:
+
+  reverse-proxy:
+    image: traefik:v2.4
+    command:
+    - --accesslog=true
+    - --accesslog.filepath=/opt/logs/access.log
+    - --providers.docker
+    - --providers.file.directory=/etc/traefik/conf
+    - --entrypoints.web.address=:80
+    - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    - --entrypoints.websecure.address=:443
+    - --certificatesresolvers.acme.acme.tlschallenge=true
+    - --certificatesresolvers.acme.acme.email=example@example.org
+    - --certificatesresolvers.acme.acme.storage=/letsencrypt/acme.json
+    restart: "unless-stopped"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - logs:/opt/logs
+      - letsencrypt:/letsencrypt
+      - ./config/certs:/certs:ro
+      - ./config/mtls.toml:/etc/traefik/conf/mtls.toml:ro
+
+  signer:
+    build:
+      context: ../../
+      dockerfile: docker/signer/Dockerfile
+    restart: "no"
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./config:/config:ro
+    command:
+      --config /config/signer_config.json
+    expose:
+      - "50052"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.signer.rule=Host(`YOURSIGNERHOSTHERE`)"
+      - "traefik.http.routers.signer.service=signer"
+      - "traefik.http.services.signer.loadbalancer.server.port=50052"
+      - "traefik.http.services.signer.loadbalancer.server.scheme=h2c"
+      - "traefik.http.routers.signer.entrypoints=websecure"
+      - "traefik.http.routers.signer.tls=true"
+      - "traefik.http.routers.signer.tls.certresolver=acme"
+      - "traefik.http.routers.signer.tls.options=mTLS@file"

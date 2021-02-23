@@ -1,0 +1,4 @@
+# dynamic configuration
+[tls.options.mTLS.clientAuth]
+    caFiles = ["/certs/ca.crt"]
+    clientAuthType = "RequireAndVerifyClientCert"

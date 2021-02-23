@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+
+  dispatcher:
+    build:
+      context: ../../
+      dockerfile: docker/dispatcher/Dockerfile
+    restart: "no"
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./config:/config:ro
+    command:
+      --config ./config/dispatcher_config.json
+    ports:
+      - "127.0.0.1:50051:50051"
+
+  nginx:
+    image: nginx:1.19-alpine
+    restart: "unless-stopped"
+    expose:
+      - "8080"
+    volumes:
+      - ./nginx-conf/grpc_proxy.conf:/etc/nginx/conf.d/grpc_proxy.conf:ro
+      - ./nginx-conf/certs:/etc/nginx/certs:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro

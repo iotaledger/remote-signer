@@ -1,0 +1,5 @@
+.vscode
+Cargo.lock
+*.key
+*.crt
+target
