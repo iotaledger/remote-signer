@@ -66,7 +66,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         if matched_signers.clone().any(|signer| signer.is_none()) {
             warn!("Requested public key is not known!");
             warn!("Request: {:?}", request);
-            warn!("Available Signers: {:?}", self.keysigners);
+            warn!("Available Signers: {:?}", keysigners_guard);
             return Err(Status::invalid_argument(
                 "I don't know the signer for one or more of the provided public keys.",
             ));
