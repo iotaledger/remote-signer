@@ -110,6 +110,10 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
                         "Error getting response from Signer `{}`: {:?}",
                         signer.endpoint, res
                     );
+                    return Err(Status::internal(format!(
+                        "Error getting response from Signer `{}`: {:?}",
+                        signer.endpoint, res
+                    )));
                 }
                 debug!("Got Response from Signer `{}`: {:?}", signer.endpoint, res);
 
