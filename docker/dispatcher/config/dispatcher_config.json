@@ -1,5 +1,7 @@
 {
   "bind_addr": "0.0.0.0:50051",
+  "minimum_signature_count": 3,
+  "signer_timeout_seconds": 2,
   "signers": [
     {
       "pubkey":  "YOURPUBLICKEYHERE",

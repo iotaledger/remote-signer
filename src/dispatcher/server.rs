@@ -1,10 +1,12 @@
 #[macro_use]
 extern crate log;
 
+use async_std::future as std_future;
 use async_std::sync::{Arc, Mutex};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use clap::{App, Arg};
 use ed25519_zebra::{Signature, VerificationKey};
@@ -34,6 +36,8 @@ pub mod signer {
 #[derive(Debug)]
 pub struct Ed25519SignatureDispatcher {
     keysigners: Arc<Mutex<Vec<config::BytesKeySigner>>>,
+    minimum_signature_count: usize,
+    signer_timeout_seconds: u64,
 }
 
 impl Ed25519SignatureDispatcher {
@@ -53,8 +57,8 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         let r = request.get_ref();
         // Check that the pubkeys do not repeat
         let pub_keys_unique = r.pub_keys.iter().unique();
-        // We do not need to check for the lexicographical sorting of the keys, it is not our job
 
+        // We do not need to check for the lexicographical sorting of the keys, it is not our job
         let keysigners_guard = self.keysigners.lock().await;
         let matched_signers = pub_keys_unique.map(|pubkey| {
             keysigners_guard
@@ -76,7 +80,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         info!("Got Request that matches signers: {:?}", confirmed_signers);
 
-        let signatures = future::join_all(
+        let signatures_joined_futures = future::join_all(
             // map of Futures<Output=Result<SignWithKeyResponse, Error>>
             confirmed_signers.clone().map(|signer| async move {
                 let channel = match self.connect_signer(signer.endpoint.clone()).await {
@@ -138,19 +142,30 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
                 }
 
                 res
-            }),
+            }).map(|signing_future| { std_future::timeout(Duration::from_secs(self.signer_timeout_seconds), signing_future) }),
         );
 
-        let signatures = signatures.await;
-        if let Some(e) = signatures.iter().find(|signature| signature.is_err()) {
-            return Err(e.as_ref().unwrap_err().to_owned());
+        let signature_joined_futures_timeout_wrapped = signatures_joined_futures.await;
+        let valid_signatures: Vec<Vec<u8>> = signature_joined_futures_timeout_wrapped
+                                        .iter()
+                                        .filter(|signature_timeout| signature_timeout.is_ok())
+                                        .map(|signature_timeout_passed| signature_timeout_passed.as_ref().unwrap())
+                                        .filter(|signature_response| signature_response.is_ok())
+                                        .map(|signature_valid_response| signature_valid_response.as_ref().unwrap())
+                                        .map(|signature_response| signature_response.get_ref().to_owned().signature)
+                                        .collect();
+
+        let valid_signatures_count = valid_signatures.len();
+        if valid_signatures_count < self.minimum_signature_count {
+            error!("Not enough valid signatures returned by Signers!");
+            return Err(Status::unavailable(format!(
+                "Could not produce enough signatures ({}).",
+                self.minimum_signature_count
+            )));
         }
 
         let reply = SignMilestoneResponse {
-            signatures: signatures
-                .iter()
-                .map(|signature| signature.as_ref().unwrap().get_ref().to_owned().signature)
-                .collect(),
+            signatures: valid_signatures
         };
 
         info!("Successfully signed.");
@@ -165,9 +180,11 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 fn create_dispatcher(
     conf_path: &str,
 ) -> remote_signer::Result<(SocketAddr, Ed25519SignatureDispatcher)> {
-    let (_, keysigners, addr) = parse_confs(conf_path)?;
+    let (conf, keysigners, addr) = parse_confs(conf_path)?;
     let dispatcher = Ed25519SignatureDispatcher {
         keysigners: Arc::new(Mutex::new(keysigners)),
+        minimum_signature_count: conf.minimum_signature_count,
+        signer_timeout_seconds: conf.signer_timeout_seconds
     };
     Ok((addr, dispatcher))
 }
