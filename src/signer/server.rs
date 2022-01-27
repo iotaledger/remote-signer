@@ -113,7 +113,7 @@ fn parse_confs(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::new().init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(
             Arg::with_name("config")
