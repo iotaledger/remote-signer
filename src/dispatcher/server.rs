@@ -145,6 +145,8 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
                     )));
                 }
 
+                info!("Valid Signature produced by signer `{}`.", signer.endpoint);
+
                 res
             }).map(|signing_future| { std_future::timeout(Duration::from_secs(self.signer_timeout_seconds), signing_future) }),
         );
@@ -152,6 +154,7 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
         let signature_joined_futures_timeout_wrapped = signatures_joined_futures.await;
         let valid_signatures: Vec<Vec<u8>> = signature_joined_futures_timeout_wrapped
                                         .iter()
+                                        .inspect(|signature_timeout| if let Err(_) = signature_timeout { warn!("Signer timed-out!") } )
                                         .filter(|signature_timeout| signature_timeout.is_ok())
                                         .map(|signature_timeout_passed| signature_timeout_passed.as_ref().unwrap())
                                         .filter(|signature_response| signature_response.is_ok())
