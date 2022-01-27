@@ -161,9 +161,13 @@ impl SignatureDispatcher for Ed25519SignatureDispatcher {
 
         let valid_signatures_count = valid_signatures.len();
         if valid_signatures_count < self.minimum_signature_count {
-            error!("Not enough valid signatures returned by Signers!");
+            error!("Not enough valid signatures returned by Signers: I've got {} of minimum {}.",
+                valid_signatures_count,
+                self.minimum_signature_count
+            );
             return Err(Status::unavailable(format!(
-                "Could not produce enough signatures ({}).",
+                "Could not produce enough signatures: I've got {} of minimum {}.",
+                valid_signatures_count,
                 self.minimum_signature_count
             )));
         }
@@ -227,7 +231,7 @@ async fn reload_configs_upon_signal(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::new().with_utc_timestamps().init().unwrap();
+    SimpleLogger::new().env().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(
             Arg::with_name("config")
