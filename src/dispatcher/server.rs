@@ -227,7 +227,7 @@ async fn reload_configs_upon_signal(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::new().init().unwrap();
+    SimpleLogger::new().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(
             Arg::with_name("config")
