@@ -24,7 +24,7 @@ use remote_signer::RemoteSignerError;
 use tokio::signal::unix::{signal, SignalKind};
 
 pub mod signer {
-    tonic::include_proto!("signer");
+    tonic::include_proto!("signerv3");
 }
 
 #[derive(Debug)]
@@ -113,7 +113,7 @@ fn parse_confs(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::from_env().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(
             Arg::with_name("config")

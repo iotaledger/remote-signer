@@ -24,11 +24,11 @@ use signer::signer_client::SignerClient;
 use signer::SignWithKeyRequest;
 
 pub mod dispatcher {
-    tonic::include_proto!("dispatcher");
+    tonic::include_proto!("dispatcherv3");
 }
 
 pub mod signer {
-    tonic::include_proto!("signer");
+    tonic::include_proto!("signerv3");
 }
 
 #[derive(Debug)]
@@ -206,7 +206,7 @@ async fn reload_configs_upon_signal(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::from_env().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(
             Arg::with_name("config")

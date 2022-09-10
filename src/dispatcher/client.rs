@@ -4,7 +4,7 @@ use dispatcher::SignMilestoneRequest;
 use hex::FromHex;
 
 pub mod dispatcher {
-    tonic::include_proto!("dispatcher");
+    tonic::include_proto!("dispatcherv3");
 }
 
 #[tokio::main]
