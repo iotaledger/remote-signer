@@ -213,7 +213,7 @@ async fn listen_to_sigterm() -> remote_signer::Result<()> {
     loop {
         stream.recv().await;
         info!("got signal SIGTERM ... exit");
-        std::process::exit(1)
+        std::process::exit(0)
     }
 }
 
