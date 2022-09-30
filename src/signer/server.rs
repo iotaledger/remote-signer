@@ -24,7 +24,7 @@ use remote_signer::RemoteSignerError;
 use tokio::signal::unix::{signal, SignalKind};
 
 pub mod signer {
-    tonic::include_proto!("signer");
+    tonic::include_proto!("signerv3");
 }
 
 #[derive(Debug)]
@@ -98,6 +98,19 @@ async fn reload_configs_upon_signal(
     }
 }
 
+async fn listen_to_sigterm() -> remote_signer::Result<()> {
+    info!("listening for sigterm");
+    
+    let mut stream = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+
+    // exit on SITGERM (for graceful docker shutdown)
+    loop {
+        stream.recv().await;
+        info!("got signal SIGTERM ... exit");
+        std::process::exit(0)
+    }
+}
+
 fn parse_confs(
     conf_path: &str,
 ) -> remote_signer::Result<(SignerConfig, Vec<BytesPubPriv>, SocketAddr)> {
@@ -113,7 +126,7 @@ fn parse_confs(
 
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::new().env().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer")
         .arg(
             Arg::with_name("config")
@@ -138,6 +151,7 @@ async fn main() -> remote_signer::Result<()> {
     debug!("Initialized Signer server: {:?}", signer);
 
     let signal = reload_configs_upon_signal(conf_path, Arc::clone(&signer.keypairs));
+    let signal_sigterm = listen_to_sigterm();
 
     let serv = Server::builder()
         .add_service(SignerServer::new(signer))
@@ -146,7 +160,7 @@ async fn main() -> remote_signer::Result<()> {
 
     info!("Serving on {}...", addr);
 
-    match future::try_join(signal, serv).await {
+    match future::try_join3(signal, serv, signal_sigterm).await {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }

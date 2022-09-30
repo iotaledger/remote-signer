@@ -10,10 +10,9 @@ RUN cargo build --release --bin dispatcher-server
 ############################
 # Image
 ############################
-FROM gcr.io/distroless/base@sha256:5e0cc69445ed1d8a17198250a7249d56dd4b6966bb6b2118e60ae9194c310647
-COPY --from=build /lib/x86_64-linux-gnu/libgcc_s.so.1 /lib/x86_64-linux-gnu/
+FROM gcr.io/distroless/cc-debian11:nonroot
 
-COPY --from=build /src/target/release/dispatcher-server /
+COPY --chown=nonroot:nonroot --from=build /src/target/release/dispatcher-server /app/
 
-ENTRYPOINT ["/dispatcher-server"]
+ENTRYPOINT ["/app/dispatcher-server"]
 CMD ["--config=/config/dispatcher_config.json"]

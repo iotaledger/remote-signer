@@ -1,5 +1,5 @@
 syntax = "proto3";
-package dispatcher;
+package dispatcherv3;
 
 service SignatureDispatcher {
 

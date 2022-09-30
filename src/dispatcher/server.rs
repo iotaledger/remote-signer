@@ -24,11 +24,11 @@ use signer::signer_client::SignerClient;
 use signer::SignWithKeyRequest;
 
 pub mod dispatcher {
-    tonic::include_proto!("dispatcher");
+    tonic::include_proto!("dispatcherv3");
 }
 
 pub mod signer {
-    tonic::include_proto!("signer");
+    tonic::include_proto!("signerv3");
 }
 
 #[derive(Debug)]
@@ -204,9 +204,22 @@ async fn reload_configs_upon_signal(
     }
 }
 
+async fn listen_to_sigterm() -> remote_signer::Result<()> {
+    info!("listening for sigterm");
+    
+    let mut stream = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+
+    // exit on SITGERM (for graceful docker shutdown)
+    loop {
+        stream.recv().await;
+        info!("got signal SIGTERM ... exit");
+        std::process::exit(0)
+    }
+}
+
 #[tokio::main]
 async fn main() -> remote_signer::Result<()> {
-    SimpleLogger::from_env().init().unwrap();
+    SimpleLogger::new().env().with_utc_timestamps().init().unwrap();
     let config_arg = App::new("Remote Signer Dispatcher")
         .arg(
             Arg::with_name("config")
@@ -234,9 +247,10 @@ async fn main() -> remote_signer::Result<()> {
         .map_err(|err| RemoteSignerError::from(err));
 
     let signal = reload_configs_upon_signal(&conf_path, key_signers);
+    let signal_sigterm = listen_to_sigterm();
 
     info!("Serving on {}...", addr);
-    match future::try_join(serv, signal).await {
+    match future::try_join3(serv, signal, signal_sigterm).await {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
