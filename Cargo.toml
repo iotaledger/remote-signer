@@ -1,6 +1,6 @@
 [package]
 name = "remote-signer"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Andrea Villa <andreakarimodm@gmail.com>"]
 edition = "2018"
 publish = false
@@ -20,7 +20,7 @@ path = "src/signer/server.rs"
 
 [dependencies]
 config = { version = "0.10", features = ["json"] }
-tonic = { version = "0.3", features = ["transport", "tls"] }
+tonic = "0.3"
 prost = "0.6"
 tokio = { version = "0.2", features = ["macros", "fs", "signal"] }
 serde = { version = "1.0", features = ["derive"] }

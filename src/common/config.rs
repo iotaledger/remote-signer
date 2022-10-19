@@ -7,6 +7,8 @@ use std::convert::{TryFrom, TryInto};
 #[derive(Deserialize, Clone, Debug)]
 pub struct DispatcherConfig {
     pub bind_addr: String,
+    pub minimum_signature_count: usize,
+    pub signer_timeout_seconds: u64,
     pub signers: Vec<HexKeySigner>,
 }
 

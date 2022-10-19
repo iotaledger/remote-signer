@@ -1,7 +1,7 @@
 ############################
 # Build
 ############################
-FROM rust:latest as build
+FROM rust:1 as build
 COPY . /src
 WORKDIR /src
 RUN rustup component add rustfmt

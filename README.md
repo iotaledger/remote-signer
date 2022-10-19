@@ -68,6 +68,8 @@ The `dispatcher` simply maps public keys to the `signer` endpoint holding the co
 ```json
 {
   "bind_addr": "0.0.0.0:50051",
+  "minimum_signature_count": 2,
+  "signer_timeout_seconds": 2,
   "signers": [
     {
       "pubkey":  "268783e7277c7c9f6dc898d08f5ca458941de2eb339e7da948239cc3647dffcc",
@@ -77,12 +79,7 @@ The `dispatcher` simply maps public keys to the `signer` endpoint holding the co
       "pubkey":  "d578d0a8e5392040cf5c3ba0153c28c300d8eaed3d8d7ef43729cadfe1e2467b",
       "endpoint": "http://signer2.remote-signer:50053"
     }
-  ],
-  "tlsauth": {
-    "ca": "ssl/ca.crt",
-    "client_cert": "ssl/dispatcher.remote-signer.crt",
-    "client_key": "ssl/dispatcher.remote-signer_plain.key"
-  }
+  ]
 }
 ```
 
@@ -98,12 +95,7 @@ On the other hand the `signer` holds the private key material corresponding to m
       "pubkey":  "268783e7277c7c9f6dc898d08f5ca458941de2eb339e7da948239cc3647dffcc",
       "privkey": "[REDACTED]"
     }
-  ],
-  "tls": {
-    "ca": "ssl/ca.crt",
-    "cert": "ssl/signer1.remote-signer.crt",
-    "key": "ssl/signer1.remote-signer_plain.key"
-  }
+  ]
 }
 ```
 
@@ -115,11 +107,6 @@ On the other hand the `signer` holds the private key material corresponding to m
       "pubkey":  "d578d0a8e5392040cf5c3ba0153c28c300d8eaed3d8d7ef43729cadfe1e2467b",
       "privkey": "[REDACTED]"
     }
-  ],
-  "tls": {
-    "ca": "ssl/ca.crt",
-    "cert": "ssl/signer2.remote-signer.crt",
-    "key": "ssl/signer2.remote-signer_plain.key"
-  }
+  ]
 }
 ```
